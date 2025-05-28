@@ -133,10 +133,10 @@ def training_walkthrough():
 
     simple_task()        # Define a simple task
     simple_model()       # Define a simple model
-    
+
     text("Let's now define the GRPO algorithm.")
     run_policy_gradient(num_epochs=1, num_steps_per_epoch=1)
-    
+
     text("Let's actually train some models.")
     experiments()
 
@@ -171,7 +171,7 @@ def simple_model():
     text("- Decode each position in the response independently (not autoregressive)")
 
     model = Model(vocab_size=3, embedding_dim=10, prompt_length=3, response_length=3)
-    
+
     text("Start with a prompt s")
     prompts = torch.tensor([[1, 0, 2]])  # [batch pos]
 
@@ -202,6 +202,7 @@ def simple_model():
     loss = compute_loss(log_probs=log_probs, deltas=deltas, mode="clipped", old_log_probs=old_log_probs)  # @inspect loss
 
     text("Sometimes, we can use an explicit KL penalty to regularize the model.")
+    text("This can be useful if you want RL a new capability into a model, but you don't want it to forget its original capabilities.")
     text("KL(p || q) = E_{x ~ p}[log(p(x)/q(x))]")
     text("KL(p || q) = E_{x ~ p}[-log(q(x)/p(x))]")
     text("KL(p || q) = E_{x ~ p}[q(x)/p(x) - log(q(x)/p(x)) - 1] because E_{x ~ p}[q(x)/p(x)] = 1")
@@ -397,7 +398,7 @@ def compute_loss(log_probs: torch.Tensor, deltas: torch.Tensor, mode: str, old_l
         epsilon = 0.01
         unclipped_ratios = log_probs / old_log_probs  # [batch trial]
         unclipped = einsum(unclipped_ratios, deltas, "batch trial pos, batch trial -> batch trial pos")
-        
+
         clipped_ratios = torch.clamp(unclipped_ratios, min=1 - epsilon, max=1 + epsilon)
         clipped = einsum(clipped_ratios, deltas, "batch trial pos, batch trial -> batch trial pos")
         return -torch.minimum(unclipped, clipped).mean()
@@ -471,7 +472,7 @@ def run_policy_gradient(num_epochs: int = 100,
             with torch.no_grad():
                 ref_log_probs = compute_log_probs(prompts=prompts, responses=responses, model=ref_model)  # [batch trial]
 
-        if loss_mode != "naive":  # Compute under the current model
+        if loss_mode != "naive":  # Compute under the current model (but freeze while we do the inner steps)
             with torch.no_grad():
                 old_log_probs = compute_log_probs(prompts=prompts, responses=responses, model=model)  # [batch trial]
 
@@ -499,21 +500,21 @@ def run_policy_gradient(num_epochs: int = 100,
         steps = [r["step"] for r in records]
         losses = [r["loss"] for r in records]
         rewards = [r["mean_reward"] for r in records]
-        
+
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-        
+
         # Loss subplot
         ax1.plot(steps, losses)
         ax1.set_xlabel("Step")
         ax1.set_ylabel("Train Loss")
         ax1.set_title("Train Loss")
-        
+
         # Reward subplot
         ax2.plot(steps, rewards)
         ax2.set_xlabel("Step")
         ax2.set_ylabel("Mean Reward")
         ax2.set_title("Mean Reward")
-        
+
         plt.tight_layout()
         plt.savefig(image_path)
         plt.close()
@@ -535,15 +536,26 @@ def tstr(x: torch.Tensor) -> str:
 
 
 def experiments():
-    text("Let's use the naive distance metric")
+    text("Let's start with updating based on raw rewards.")
     image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode="rewards", loss_mode="naive", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover
     image(image_path, width=600), link(log_path)
+    text("Looking through the output, you'll see that by the end, we haven't really learned sorting very well (and this is still the training set).")
 
+    text("Let's try using centered rewards.")
     image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode="centered_rewards", loss_mode="naive", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover
     image(image_path, width=600), link(log_path)
+    text("This seems to help, as:")
+    text("- Suboptimal rewards get a negative gradient update, and")
+    text("- If all the responses for a given prompt have the same reward, then we don't update.")
+    text("Overall, this is better, but we're still getting stuck in local optima.")
 
+    text("Finally, let's try normalizing by the standard deviation.")
     image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode="normalized_rewards", loss_mode="naive", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover
     image(image_path, width=600), link(log_path)
+    text("There is not much difference here, and indeed, variants like Dr. GRPO do not perform this normalization to avoid length bias (not an issue here since all responses have the same length. "), link("https://arxiv.org/abs/2503.20783")
+
+    text("Overall, as you can see, reinforcement learning is not trivial, and you can easily get stuck in suboptimal states.")
+    text("The hyperparameters could probably be tuned better...")
 
 
 if __name__ == "__main__":
