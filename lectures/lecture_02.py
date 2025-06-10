@@ -555,7 +555,7 @@ def gradients_flops():
     text("For each (i, j, k), multiply and add.")
     num_backward_flops += 2 * B * D * K  # @inspect num_backward_flops
 
-    text("h1.grad[i,j] = sum_k w2[i,j] * h2.grad[i,k]")
+    text("h1.grad[j,k] = sum_i w2[k,i] * h2.grad[j,i]")
     assert h1.grad.size() == torch.Size([B, D])
     assert w2.size() == torch.Size([D, K])
     assert h2.grad.size() == torch.Size([B, K])
