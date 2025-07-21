@@ -235,7 +235,7 @@ def reduce_scatter(rank: int, world_size: int, num_elements: int):
 
     # Measure the effective bandwidth
     dist.barrier()
-    data_bytes = output.element_size() * output.numel()  # How much data in the output
+    data_bytes = input.element_size() * input.numel()  # How much data in the input
     sent_bytes = data_bytes * (world_size - 1)  # How much needs to be sent (no 2x here)
     total_duration = world_size * duration  # Total time for transmission
     bandwidth = sent_bytes / total_duration
