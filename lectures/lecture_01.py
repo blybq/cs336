@@ -81,7 +81,7 @@ def why_this_course_exists():
     text("Frontier models are out of reach for us.")
     text("But building small language models (<1B parameters in this class) might not be representative of large language models.")
 
-    text("Exmaple 1: fraction of FLOPs spent in attention versus MLP changes with scale. "), x_link("https://x.com/stephenroller/status/1579993017234382849")
+    text("Example 1: fraction of FLOPs spent in attention versus MLP changes with scale. "), x_link("https://x.com/stephenroller/status/1579993017234382849")
     image("images/roller-flops.png", width=400)
     text("Example 2: emergence of behavior with scale "), link("https://arxiv.org/pdf/2206.07682")
     image("images/wei-emergence-plot.png", width=600)
