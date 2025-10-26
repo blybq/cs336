@@ -125,6 +125,6 @@ def system_text(command: list[str]):
     text(output, verbatim=True)
 
 
-def remove_ansi_escape_sequences(text):
+def remove_ansi_escape_sequences(input_text: str) -> str:
     ansi_escape_pattern = re.compile(r'\x1b\[[0-9;]*m')
-    return ansi_escape_pattern.sub('', text)
+    return ansi_escape_pattern.sub('', input_text)
