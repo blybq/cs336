@@ -432,8 +432,8 @@ def nemotron_cc():
     text("- DCLM classifier")
 
     text("Synthetic data rephrasing")
-    text("- For high-quality data, use LM to rephrase low-quality data")
-    text("- For low-quality data, use LM to generate tasks (QA pairs, extract key information, etc.)")
+    text("- For low-quality data, use LM to rephrase low-quality data")
+    text("- For high-quality data, use LM to generate tasks (QA pairs, extract key information, etc.)")
 
     text("Result: 6.3T tokens (HQ subset is 1.1T)")
     text("For reference, Llama 3 trained on 15T, Qwen3 trained on 36T")
