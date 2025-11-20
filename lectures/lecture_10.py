@@ -171,7 +171,7 @@ def arithmetic_intensity_of_inference():
     flops += 2*B*T*D*F
     text("4. Write U (B x T x F) to HBM")
     bytes_transferred += 2*B*T*F
-    text("5. Compute G = X (B x T x F) @ Wgate (D x F)")
+    text("5. Compute G = X (B x T x D) @ Wgate (D x F)")
     flops += 2*B*T*D*F
     text("6. Write G (B x T x F) to HBM")
     bytes_transferred += 2*B*T*F
