@@ -367,7 +367,7 @@ def einops_reduce():
     x: Float[torch.Tensor, "batch seq hidden"] = torch.ones(2, 3, 4)  # @inspect x
 
     text("Old way:")
-    y = x.mean(dim=-1)  # @inspect y
+    y = x.sum(dim=-1)  # @inspect y
 
     text("New (einops) way:")
     y = reduce(x, "... hidden -> ...", "sum")  # @inspect y
