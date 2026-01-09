@@ -391,12 +391,12 @@ def compute_loss(log_probs: torch.Tensor, deltas: torch.Tensor, mode: str, old_l
         return -einsum(log_probs, deltas, "batch trial pos, batch trial -> batch trial pos").mean()
 
     if mode == "unclipped":
-        ratios = log_probs / old_log_probs  # [batch trial]
+        ratios = torch.exp(log_probs - old_log_probs)  # [batch trial]
         return -einsum(ratios, deltas, "batch trial pos, batch trial -> batch trial pos").mean()
 
     if mode == "clipped":
         epsilon = 0.01
-        unclipped_ratios = log_probs / old_log_probs  # [batch trial]
+        unclipped_ratios = torch.exp(log_probs - old_log_probs)  # [batch trial]
         unclipped = einsum(unclipped_ratios, deltas, "batch trial pos, batch trial -> batch trial pos")
 
         clipped_ratios = torch.clamp(unclipped_ratios, min=1 - epsilon, max=1 + epsilon)
