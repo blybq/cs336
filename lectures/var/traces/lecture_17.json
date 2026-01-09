@@ -1,6 +1,6 @@
 {
   "files": {
-    "lecture_17.py": "import os\nimport sys\nfrom typing import Callable\nimport math\nfrom dataclasses import dataclass\nimport torch\nimport torch.nn as nn\nfrom torch.nn import functional as F\nfrom torch.nn.functional import softmax\nfrom einops import einsum, rearrange, repeat\nfrom execute_util import text, link, image\nfrom lecture_util import named_link\nfrom references import ppo2017, grpo, qwen3, llama3\nimport matplotlib.pyplot as plt\nfrom tqdm import tqdm\n\ndef main():\n    text(\"Last lecture: overview of RL from verifiable rewards (policy gradient)\")\n    text(\"This lecture: deep dive into the mechanics of policy gradient (e.g., GRPO)\")\n\n    rl_setup_for_language_models()\n    policy_gradient()\n    training_walkthrough()\n\n    text(\"Summary\")\n    text(\"- Reinforcement learning is the key to surpassing human abilities\")\n    text(\"- **If** you can measure it, you can optimize it\")\n    text(\"- Policy gradient framework is conceptually clear, just need baselines to reduce variance\")\n    text(\"- RL systems is much more complex than pretraining (inference workloads, manage multiple models)\")\n\n    text(\"Final two lectures:\")\n    text(\"- Junyang Lin (Qwen) \"), link(qwen3)\n    text(\"- Mike Lewis (Llama) \"), link(llama3)\n\n\ndef rl_setup_for_language_models():\n    text(\"**State** s: prompt + generated response so far\")\n    text(\"**Action** a: generate next token\")\n\n    text(\"**Rewards** R: how good the response is; we'll focus on:\")\n    text(\"- Outcome rewards, which depend on the entire response\")\n    text(\"- Verifiable rewards, whose computation is deterministic\")\n    text(\"- Notions of discounting and bootstrapping are less applicable\")\n    text(\"Example: \\\"... Therefore, the answer is 3 miles.\\\"\")\n\n    text(\"**Transition probabilities** T(s' | s, a): deterministic s' = s + a\")\n    text(\"- Can do planning / test-time compute (unlike in robotics)\")\n    text(\"- States are really made up (different from robotics), so a lot of flexibility\")\n\n    text(\"**Policy** \u03c0(a | s): just a language model (fine-tuned)\")\n\n    text(\"**Rollout/episode/trajectory**: s \u2192 a \u2192 ... \u2192 a \u2192 a \u2192 R\")\n    text(\"**Objective**: maximize expected reward E[R]\")\n    text(\"(where the expectation is taken over prompts s and response tokens a)\")\n\n\ndef policy_gradient():\n    text(\"For notational simplicity, let *a* denote the entire response.\")\n\n    text(\"We want to maximize expected reward with respect to the policy \u03c0:\")\n    text(\"E[R] = \u222b p(s) \u03c0(a | s) R(s, a)\")\n\n    text(\"Obvious thing to do is to take the gradient:\")\n    text(\"\u2207 E[R] = \u222b p(s) \u2207 \u03c0(a | s) R(s, a)\")\n    text(\"\u2207 E[R] = \u222b p(s) \u03c0(a | s) \u2207 log \u03c0(a | s) R(s, a)\")\n    text(\"\u2207 E[R] = E[\u2207 log \u03c0(a | s) R(s, a)]\")\n\n    text(\"Naive policy gradient:\")\n    text(\"- Sample prompt s, sample response a ~ \u03c0(a | s)\")\n    text(\"- Update parameters based on \u2207 log \u03c0(a | s) R(s, a) (same as SFT, but weighted by R(s, a))\")\n\n    text(\"Setting: R(s, a) \u2208 {0, 1} = whether response is correct or not\")\n    text(\"- Naive policy gradient only updates on correct responses\")\n    text(\"- Like SFT, but dataset changing over time as policy changes\")\n\n    text(\"Challenge: high noise/variance\")\n    text(\"In this setting, sparse rewards (few responses get reward 1, most get 0)\")\n    text(\"In contrast: in RLHF, reward models (learned from pairwise preferences) are more continuous\")\n\n    text(\"### Baselines\")\n    text(\"Recall \u2207 E[R] = E[\u2207 log \u03c0(a | s) R(s, a)]\")\n    text(\"\u2207 log \u03c0(a | s) R(s, a) is an unbiased estimate of \u2207 E[R], but maybe there are others with lower variance...\")\n\n    text(\"Example: two states\")\n    text(\"- s1: a1 \u2192 reward 11, a2 \u2192 reward 9\")\n    text(\"- s2: a1 \u2192 reward 0, a2 \u2192 reward 2\")\n    text(\"Don't want s1 \u2192 a2 (reward 9) because a1 is better, want s2 \u2192 a2 (reward 2), but 9 > 2\")\n\n    text(\"Idea: maximize the baselined reward: E[R - b(s)]\")\n    text(\"This is just E[R] shifted by a constant E[b(s)] that doesn't depend on the policy \u03c0\")\n    text(\"We update based on \u2207 log \u03c0(a | s) (R(s, a) - b(s))\")\n\n    text(\"What b(s) should we use?\")\n\n    text(\"Example: two states\")\n    text(\"Assuming uniform distribution over (s, a) and |\u2207 \u03c0(a | s)| = 1\")\n    naive_variance = torch.std(torch.tensor([11., 9, 0, 2]))  # @inspect naive_variance\n    text(\"Define baseline b(s1) = 10, b(s2) = 1\")\n    baseline_variance = torch.std(torch.tensor([11. - 10, 9 - 10, 0 - 1, 2 - 1]))  # @inspect baseline_variance\n    text(f\"Variance reduced from {naive_variance:.3f} to {baseline_variance:.3f}\")\n\n    text(\"Optimal b*(s) = E[(\u2207 \u03c0(a | s))^2 R | s] / E[(\u2207 \u03c0(a | s))^2 | s] (for one-parameter models)\")\n    text(\"This is difficult to compute...\")\n    text(\"...so heuristic is to use the mean reward:\")\n    text(\"b(s) = E[R | s]\")\n    text(\"This is still hard to compute and must be estimated.\")\n\n    text(\"### Advantage functions\")\n    text(\"This choice of b(s) has connections to advantage functions.\")\n    text(\"- V(s) = E[R | s] = expected reward from state s\")\n    text(\"- Q(s, a) = E[R | s, a] = expected reward from state s taking action a\")\n    text(\"(Note: Q and R are the same here, because we're assuming *a* has all actions and we have outcome rewards.)\")\n\n    text(\"Definition (advantage): A(s, a) = Q(s, a) - V(s)\")\n    text(\"Intuition: how much better is action a than expected from state s\")\n\n    text(\"If b(s) = E[R | s], then the baselined reward is identical to the advantage!\")\n    text(\"E[R - b(s)] = A(s, a)\")\n\n    text(\"In general:\")\n    text(\"- Ideal: E[\u2207 log \u03c0(a | s) R(s, a)]\")\n    text(\"- Estimate: \u2207 log \u03c0(a | s) \u03b4\")\n    text(\"There are multiple choices of \u03b4, as we'll see later.\")\n\n    named_link(\"CS224R lecture notes\", \"https://cs224r.stanford.edu/slides/03_cs224r_policy_gradients_2025.pdf\")\n\n\ndef training_walkthrough():\n    text(\"Group Relative Policy Optimization (GRPO) \"), link(grpo)\n    text(\"- Simplification to PPO that removes the critic (value function)\")\n    text(\"- Leverages the group structure in the LM setting (multiple responses per prompt), which provides a natural baseline b(s).\")\n    image(\"images/grpo-algorithm.png\", width=700)\n\n    simple_task()        # Define a simple task\n    simple_model()       # Define a simple model\n\n    text(\"Let's now define the GRPO algorithm.\")\n    run_policy_gradient(num_epochs=1, num_steps_per_epoch=1)\n\n    text(\"Let's actually train some models.\")\n    experiments()\n\n\ndef simple_task():\n    text(\"Task: sorting n numbers\")\n\n    text(\"Prompt: n numbers\")\n    prompt = [1, 0, 2]\n    text(\"Response: n numbers\")\n    response = [0, 1, 2]\n\n    text(\"Reward should capture how close to sorted the response is.\")\n\n    text(\"Define a reward that returns the number of positions where the response matches the ground truth.\")\n    reward = sort_distance_reward([3, 1, 0, 2], [0, 1, 2, 3])  # @inspect reward\n    reward = sort_distance_reward([3, 1, 0, 2], [7, 2, 2, 5])  # @inspect reward  @stepover\n    reward = sort_distance_reward([3, 1, 0, 2], [0, 3, 1, 2])  # @inspect reward  @stepover\n\n    text(\"Define an alternative reward that gives more partial credit.\")\n    reward = sort_inclusion_ordering_reward([3, 1, 0, 2], [0, 1, 2, 3])  # @inspect reward\n    reward = sort_inclusion_ordering_reward([3, 1, 0, 2], [7, 2, 2, 5])  # @inspect reward  @stepover\n    reward = sort_inclusion_ordering_reward([3, 1, 0, 2], [0, 3, 1, 2])  # @inspect reward  @stepover\n\n    text(\"Note that the second reward function provides more credit to the 3rd response than the first reward function.\")\n\n\ndef simple_model():\n    text(\"Define a simple model that maps prompts to responses\")\n    text(\"- Assume fixed prompt and response length\")\n    text(\"- Captures positional information with separate per-position parameters\")\n    text(\"- Decode each position in the response independently (not autoregressive)\")\n\n    model = Model(vocab_size=3, embedding_dim=10, prompt_length=3, response_length=3)\n\n    text(\"Start with a prompt s\")\n    prompts = torch.tensor([[1, 0, 2]])  # [batch pos]\n\n    text(\"Generate responses a\")\n    torch.manual_seed(10)\n    responses = generate_responses(prompts=prompts, model=model, num_responses=5)  # [batch trial pos]  @inspect responses\n\n    text(\"Compute rewards R of these responses:\")\n    rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards\n\n    text(\"Compute deltas \u03b4 given the rewards R (for performing the updates)\")\n    deltas = compute_deltas(rewards=rewards, mode=\"rewards\")  # [batch trial]  @inspect deltas\n    deltas = compute_deltas(rewards=rewards, mode=\"centered_rewards\")  # [batch trial]  @inspect deltas\n    deltas = compute_deltas(rewards=rewards, mode=\"normalized_rewards\")  # [batch trial]  @inspect deltas\n    deltas = compute_deltas(rewards=rewards, mode=\"max_rewards\")  # [batch trial]  @inspect deltas\n\n    text(\"Compute log probabilities of these responses:\")\n    log_probs = compute_log_probs(prompts=prompts, responses=responses, model=model)  # [batch trial]  @inspect log_probs\n\n    text(\"Compute loss so that we can use to update the model parameters\")\n    loss = compute_loss(log_probs=log_probs, deltas=deltas, mode=\"naive\")  # @inspect loss\n\n    freezing_parameters()\n\n    old_model = Model(vocab_size=3, embedding_dim=10, prompt_length=3, response_length=3)  # Pretend this is an old checkpoint @stepover\n    old_log_probs = compute_log_probs(prompts=prompts, responses=responses, model=old_model)  # @stepover\n    loss = compute_loss(log_probs=log_probs, deltas=deltas, mode=\"unclipped\", old_log_probs=old_log_probs)  # @inspect loss\n    loss = compute_loss(log_probs=log_probs, deltas=deltas, mode=\"clipped\", old_log_probs=old_log_probs)  # @inspect loss\n\n    text(\"Sometimes, we can use an explicit KL penalty to regularize the model.\")\n    text(\"This can be useful if you want RL a new capability into a model, but you don't want it to forget its original capabilities.\")\n    text(\"KL(p || q) = E_{x ~ p}[log(p(x)/q(x))]\")\n    text(\"KL(p || q) = E_{x ~ p}[-log(q(x)/p(x))]\")\n    text(\"KL(p || q) = E_{x ~ p}[q(x)/p(x) - log(q(x)/p(x)) - 1] because E_{x ~ p}[q(x)/p(x)] = 1\")\n    kl_penalty = compute_kl_penalty(log_probs=log_probs, ref_log_probs=old_log_probs)  # @inspect kl_penalty\n\n    text(\"Summary:\")\n    text(\"- Generate responses\")\n    text(\"- Compute rewards R and \u03b4 (rewards, centered rewards, normalized rewards, max rewards)\")\n    text(\"- Compute log probs of responses\")\n    text(\"- Compute loss from log probs and \u03b4 (naive, unclipped, clipped)\")\n\n\ndef freezing_parameters():\n    text(\"Motivation: in GRPO you'll see ratios: p(a | s) / p_old(a | s)\")\n    text(\"When you're optimizing, it is important to freeze and not differentiate through p_old\")\n    w = torch.tensor(2., requires_grad=True)\n    p = torch.nn.Sigmoid()(w)\n    p_old = torch.nn.Sigmoid()(w)\n    ratio = p / p_old\n    ratio.backward()\n    grad = w.grad  # @inspect grad\n\n    text(\"Do it properly:\")\n    w = torch.tensor(2., requires_grad=True)\n    p = torch.nn.Sigmoid()(w)\n    with torch.no_grad():  # Important: treat p_old as a constant!\n        p_old = torch.nn.Sigmoid()(w)\n    ratio = p / p_old\n    ratio.backward()\n    grad = w.grad  # @inspect grad\n\n\ndef compute_reward(prompts: torch.Tensor, responses: torch.Tensor, reward_fn: Callable[[list[int], list[int]], float]) -> torch.Tensor:\n    \"\"\"\n    Args:\n        prompts (int[batch pos])\n        responses (int[batch trial pos])\n    Returns:\n        rewards (float[batch trial])\n    \"\"\"\n    batch_size, num_responses, _ = responses.shape\n    rewards = torch.empty(batch_size, num_responses, dtype=torch.float32)\n    for i in range(batch_size):\n        for j in range(num_responses):\n            rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])\n    return rewards\n\n\ndef sort_distance_reward(prompt: list[int], response: list[int]) -> float:  # @inspect prompt, @inspect response\n    \"\"\"\n    Return how close response is to ground_truth = sorted(prompt).\n    In particular, compute number of positions where the response matches the ground truth.\n    \"\"\"\n    assert len(prompt) == len(response)\n    ground_truth = sorted(prompt)\n    return sum(1 for x, y in zip(response, ground_truth) if x == y)\n\n\ndef sort_inclusion_ordering_reward(prompt: list[int], response: list[int]) -> float:  # @inspect prompt, @inspect response\n    \"\"\"\n    Return how close response is to ground_truth = sorted(prompt).\n    \"\"\"\n    assert len(prompt) == len(response)\n\n    # Give one point for each token in the prompt that shows up in the response\n    inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward\n\n    # Give one point for each adjacent pair in response that's sorted\n    ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward\n\n    return inclusion_reward + ordering_reward\n\n\nclass Model(nn.Module):\n    def __init__(self, vocab_size: int, embedding_dim: int, prompt_length: int, response_length: int):\n        super().__init__()\n        self.embedding_dim = embedding_dim\n        self.embedding = nn.Embedding(vocab_size, embedding_dim)\n        # For each position, we have a matrix for encoding and a matrix for decoding\n        self.encode_weights = nn.Parameter(torch.randn(prompt_length, embedding_dim, embedding_dim) / math.sqrt(embedding_dim))\n        self.decode_weights = nn.Parameter(torch.randn(response_length, embedding_dim, embedding_dim) / math.sqrt(embedding_dim))\n\n    def forward(self, prompts: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Args:\n            prompts: int[batch pos]\n        Returns:\n            logits: float[batch pos vocab]\n        \"\"\"\n        # Embed the prompts\n        embeddings = self.embedding(prompts)   # [batch pos dim]\n\n        # Transform using per prompt position matrix, collapse into one vector\n        encoded = einsum(embeddings, self.encode_weights, \"batch pos dim1, pos dim1 dim2 -> batch dim2\")\n\n        # Turn into one vector per response position\n        decoded = einsum(encoded, self.decode_weights, \"batch dim2, pos dim2 dim1 -> batch pos dim1\")\n\n        # Convert to logits (input and output share embeddings)\n        logits = einsum(decoded, self.embedding.weight, \"batch pos dim1, vocab dim1 -> batch pos vocab\")\n\n        return logits\n\n\ndef generate_responses(prompts: torch.Tensor, model: Model, num_responses: int) -> torch.Tensor:\n    \"\"\"\n    Args:\n        prompts (int[batch pos])\n    Returns:\n        generated responses: int[batch trial pos]\n\n    Example (batch_size = 3, prompt_length = 3, num_responses = 2, response_length = 4)\n    p1 p1 p1 r1 r1 r1 r1\n             r2 r2 r2 r2\n    p2 p2 p2 r3 r3 r3 r3\n             r4 r4 r4 r4\n    p3 p3 p3 r5 r5 r5 r5\n             r6 r6 r6 r6\n    \"\"\"\n    logits = model(prompts)  # [batch pos vocab]\n    batch_size = prompts.shape[0]\n\n    # Sample num_responses (independently) for each [batch pos]\n    flattened_logits = rearrange(logits, \"batch pos vocab -> (batch pos) vocab\")\n    flattened_responses = torch.multinomial(softmax(flattened_logits, dim=-1), num_samples=num_responses, replacement=True)  # [batch pos trial]\n    responses = rearrange(flattened_responses, \"(batch pos) trial -> batch trial pos\", batch=batch_size)\n    return responses\n\n\ndef compute_log_probs(prompts: torch.Tensor, responses: torch.Tensor, model: Model) -> torch.Tensor:\n    \"\"\"\n    Args:\n        prompts (int[batch pos])\n        responses (int[batch trial pos])\n    Returns:\n        log_probs (float[batch trial pos]) under the model\n    \"\"\"\n    # Compute log prob of responses under model\n    logits = model(prompts)  # [batch pos vocab]\n    log_probs = F.log_softmax(logits, dim=-1)  # [batch pos vocab]\n\n    # Replicate to align with responses\n    num_responses = responses.shape[1]\n    log_probs = repeat(log_probs, \"batch pos vocab -> batch trial pos vocab\", trial=num_responses)  # [batch trial pos vocab]\n\n    # Index into log_probs using responses\n    log_probs = log_probs.gather(dim=-1, index=responses.unsqueeze(-1)).squeeze(-1)  # [batch trial pos]\n\n    return log_probs\n\n\ndef compute_deltas(rewards: torch.Tensor, mode: str) -> torch.Tensor:  # @inspect rewards\n    \"\"\"\n    Args:\n        rewards (float[batch trial])\n    Returns:\n        deltas (float[batch trial]) which are advantage-like quantities for updating\n    \"\"\"\n    if mode == \"rewards\":\n        return rewards\n\n    if mode == \"centered_rewards\":\n        # Compute mean over all the responses (trial) for each prompt (batch)\n        mean_rewards = rewards.mean(dim=-1, keepdim=True)  # @inspect mean_rewards\n        centered_rewards = rewards - mean_rewards  # @inspect centered_rewards\n        return centered_rewards\n\n    if mode == \"normalized_rewards\":\n        mean_rewards = rewards.mean(dim=-1, keepdim=True)  # @inspect mean_rewards\n        std_rewards = rewards.std(dim=-1, keepdim=True)  # @inspect std_rewards\n        centered_rewards = rewards - mean_rewards  # @inspect centered_rewards\n        normalized_rewards = centered_rewards / (std_rewards + 1e-5)  # @inspect normalized_rewards\n        return normalized_rewards\n\n    if mode == \"max_rewards\":\n        # Zero out any reward that isn't the maximum for each batch\n        max_rewards = rewards.max(dim=-1, keepdim=True)[0]\n        max_rewards = torch.where(rewards == max_rewards, rewards, torch.zeros_like(rewards))\n        return max_rewards\n\n    raise ValueError(f\"Unknown mode: {mode}\")\n\n\ndef compute_loss(log_probs: torch.Tensor, deltas: torch.Tensor, mode: str, old_log_probs: torch.Tensor | None = None) -> torch.Tensor:\n    if mode == \"naive\":\n        return -einsum(log_probs, deltas, \"batch trial pos, batch trial -> batch trial pos\").mean()\n\n    if mode == \"unclipped\":\n        ratios = log_probs / old_log_probs  # [batch trial]\n        return -einsum(ratios, deltas, \"batch trial pos, batch trial -> batch trial pos\").mean()\n\n    if mode == \"clipped\":\n        epsilon = 0.01\n        unclipped_ratios = log_probs / old_log_probs  # [batch trial]\n        unclipped = einsum(unclipped_ratios, deltas, \"batch trial pos, batch trial -> batch trial pos\")\n\n        clipped_ratios = torch.clamp(unclipped_ratios, min=1 - epsilon, max=1 + epsilon)\n        clipped = einsum(clipped_ratios, deltas, \"batch trial pos, batch trial -> batch trial pos\")\n        return -torch.minimum(unclipped, clipped).mean()\n\n    raise ValueError(f\"Unknown mode: {mode}\")\n\ndef compute_kl_penalty(log_probs: torch.Tensor, ref_log_probs: torch.Tensor) -> torch.Tensor:\n    \"\"\"\n    Compute an estimate of KL(model | ref_model), where the models are given by:\n        log_probs [batch trial pos vocab]\n        ref_log_probs [batch trial pos vocab]\n    Use the estimate:\n        KL(p || q) = E_p[q/p - log(q/p) - 1]\n    \"\"\"\n    return (torch.exp(ref_log_probs - log_probs) - (ref_log_probs - log_probs) - 1).sum(dim=-1).mean()\n\n\ndef run_policy_gradient(num_epochs: int = 100,\n                        num_steps_per_epoch: int = 10,\n                        compute_ref_model_period: int = 10,\n                        num_responses: int = 10,\n                        deltas_mode: str = \"rewards\",\n                        loss_mode: str = \"naive\",\n                        kl_penalty: float = 0.0,\n                        reward_fn: Callable[[list[int], list[int]], float] = sort_inclusion_ordering_reward,\n                        use_cache: bool = False) -> tuple[str, str]:\n    \"\"\"Train a model using policy gradient.\n    Return:\n    - Path to the image of the learning curve.\n    - Path to the log file\n    \"\"\"\n    torch.manual_seed(5)\n\n    image_path = f\"var/policy_gradient_{deltas_mode}_{loss_mode}.png\"\n    log_path = f\"var/policy_gradient_{deltas_mode}_{loss_mode}.txt\"\n\n    # Already ran, just cache it\n    if use_cache and os.path.exists(image_path) and os.path.exists(log_path):\n        return image_path, log_path\n\n    # Define the data\n    prompts = torch.tensor([[1, 0, 2], [3, 2, 4], [1, 2, 3]])\n    vocab_size = prompts.max() + 1\n    prompt_length = response_length = prompts.shape[1]\n\n    model = Model(vocab_size=vocab_size, embedding_dim=10, prompt_length=prompt_length, response_length=response_length)\n    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)\n\n    records = []\n    ref_log_probs = None\n    ref_model = None\n    old_log_probs = None\n\n    if use_cache:\n        out = open(log_path, \"w\")\n    else:\n        out = sys.stdout\n\n    for epoch in tqdm(range(num_epochs), desc=\"epoch\"):\n        # If using KL penalty, need to get the reference model (freeze it every few epochs)\n        if kl_penalty != 0:\n            if epoch % compute_ref_model_period == 0:\n                ref_model = model.clone()\n\n        # Sample responses and evaluate their rewards\n        responses = generate_responses(prompts=prompts, model=model, num_responses=num_responses)  # [batch trial pos]\n        rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=reward_fn)  # [batch trial]\n        deltas = compute_deltas(rewards=rewards, mode=deltas_mode)  # [batch trial]\n\n        if kl_penalty != 0:  # Compute under the reference model\n            with torch.no_grad():\n                ref_log_probs = compute_log_probs(prompts=prompts, responses=responses, model=ref_model)  # [batch trial]\n\n        if loss_mode != \"naive\":  # Compute under the current model (but freeze while we do the inner steps)\n            with torch.no_grad():\n                old_log_probs = compute_log_probs(prompts=prompts, responses=responses, model=model)  # [batch trial]\n\n        # Take a number of steps given the responses\n        for step in range(num_steps_per_epoch):\n            log_probs = compute_log_probs(prompts=prompts, responses=responses, model=model)  # [batch trial]\n            loss = compute_loss(log_probs=log_probs, deltas=deltas, mode=loss_mode, old_log_probs=old_log_probs)  # @inspect loss\n            if kl_penalty != 0:\n                loss += kl_penalty * compute_kl_penalty(log_probs=log_probs, ref_log_probs=ref_log_probs)\n\n            # Print information\n            print_information(epoch=epoch, step=step, loss=loss, prompts=prompts, rewards=rewards, responses=responses, log_probs=log_probs, deltas=deltas, out=out)\n            global_step = epoch * num_steps_per_epoch + step\n            records.append({\"epoch\": epoch, \"step\": global_step, \"loss\": loss.item(), \"mean_reward\": rewards.mean().item()})\n\n            # Backprop and update parameters\n            optimizer.zero_grad()\n            loss.backward()\n            optimizer.step()\n    if use_cache:\n        out.close()\n\n    if use_cache:\n        # Plot step versus loss and reward in two subplots\n        steps = [r[\"step\"] for r in records]\n        losses = [r[\"loss\"] for r in records]\n        rewards = [r[\"mean_reward\"] for r in records]\n\n        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))\n\n        # Loss subplot\n        ax1.plot(steps, losses)\n        ax1.set_xlabel(\"Step\")\n        ax1.set_ylabel(\"Train Loss\")\n        ax1.set_title(\"Train Loss\")\n\n        # Reward subplot\n        ax2.plot(steps, rewards)\n        ax2.set_xlabel(\"Step\")\n        ax2.set_ylabel(\"Mean Reward\")\n        ax2.set_title(\"Mean Reward\")\n\n        plt.tight_layout()\n        plt.savefig(image_path)\n        plt.close()\n\n    return image_path, log_path\n\n\ndef print_information(epoch: int, step: int, loss: torch.Tensor, prompts: torch.Tensor, rewards: torch.Tensor, responses: torch.Tensor, log_probs: torch.Tensor, deltas: torch.Tensor, out):\n    print(f\"epoch = {epoch}, step = {step}, loss = {loss:.3f}, reward = {rewards.mean():.3f}\", file=out)\n    if epoch % 1 == 0 and step % 5 == 0:\n        for batch in range(prompts.shape[0]):\n            print(f\"  prompt = {prompts[batch, :]}\", file=out)\n            for trial in range(responses.shape[1]):\n                print(f\"    response = {responses[batch, trial, :]}, log_probs = {tstr(log_probs[batch, trial])}, reward = {rewards[batch, trial]}, delta = {deltas[batch, trial]:.3f}\", file=out)\n\n\ndef tstr(x: torch.Tensor) -> str:\n    return \"[\" + \", \".join(f\"{x[i]:.3f}\" for i in range(x.shape[0])) + \"]\"\n\n\ndef experiments():\n    text(\"Let's start with updating based on raw rewards.\")\n    image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode=\"rewards\", loss_mode=\"naive\", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover\n    image(image_path, width=600), link(log_path)\n    text(\"Looking through the output, you'll see that by the end, we haven't really learned sorting very well (and this is still the training set).\")\n\n    text(\"Let's try using centered rewards.\")\n    image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode=\"centered_rewards\", loss_mode=\"naive\", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover\n    image(image_path, width=600), link(log_path)\n    text(\"This seems to help, as:\")\n    text(\"- Suboptimal rewards get a negative gradient update, and\")\n    text(\"- If all the responses for a given prompt have the same reward, then we don't update.\")\n    text(\"Overall, this is better, but we're still getting stuck in local optima.\")\n\n    text(\"Finally, let's try normalizing by the standard deviation.\")\n    image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode=\"normalized_rewards\", loss_mode=\"naive\", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover\n    image(image_path, width=600), link(log_path)\n    text(\"There is not much difference here, and indeed, variants like Dr. GRPO do not perform this normalization to avoid length bias (not an issue here since all responses have the same length. \"), link(\"https://arxiv.org/abs/2503.20783\")\n\n    text(\"Overall, as you can see, reinforcement learning is not trivial, and you can easily get stuck in suboptimal states.\")\n    text(\"The hyperparameters could probably be tuned better...\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
+    "lecture_17.py": "import os\nimport sys\nfrom typing import Callable\nimport math\nfrom dataclasses import dataclass\nimport torch\nimport torch.nn as nn\nfrom torch.nn import functional as F\nfrom torch.nn.functional import softmax\nfrom einops import einsum, rearrange, repeat\nfrom execute_util import text, link, image\nfrom lecture_util import named_link\nfrom references import ppo2017, grpo, qwen3, llama3\nimport matplotlib.pyplot as plt\nfrom tqdm import tqdm\n\ndef main():\n    text(\"Last lecture: overview of RL from verifiable rewards (policy gradient)\")\n    text(\"This lecture: deep dive into the mechanics of policy gradient (e.g., GRPO)\")\n\n    rl_setup_for_language_models()\n    policy_gradient()\n    training_walkthrough()\n\n    text(\"Summary\")\n    text(\"- Reinforcement learning is the key to surpassing human abilities\")\n    text(\"- **If** you can measure it, you can optimize it\")\n    text(\"- Policy gradient framework is conceptually clear, just need baselines to reduce variance\")\n    text(\"- RL systems is much more complex than pretraining (inference workloads, manage multiple models)\")\n\n    text(\"Final two lectures:\")\n    text(\"- Junyang Lin (Qwen) \"), link(qwen3)\n    text(\"- Mike Lewis (Llama) \"), link(llama3)\n\n\ndef rl_setup_for_language_models():\n    text(\"**State** s: prompt + generated response so far\")\n    text(\"**Action** a: generate next token\")\n\n    text(\"**Rewards** R: how good the response is; we'll focus on:\")\n    text(\"- Outcome rewards, which depend on the entire response\")\n    text(\"- Verifiable rewards, whose computation is deterministic\")\n    text(\"- Notions of discounting and bootstrapping are less applicable\")\n    text(\"Example: \\\"... Therefore, the answer is 3 miles.\\\"\")\n\n    text(\"**Transition probabilities** T(s' | s, a): deterministic s' = s + a\")\n    text(\"- Can do planning / test-time compute (unlike in robotics)\")\n    text(\"- States are really made up (different from robotics), so a lot of flexibility\")\n\n    text(\"**Policy** \u03c0(a | s): just a language model (fine-tuned)\")\n\n    text(\"**Rollout/episode/trajectory**: s \u2192 a \u2192 ... \u2192 a \u2192 a \u2192 R\")\n    text(\"**Objective**: maximize expected reward E[R]\")\n    text(\"(where the expectation is taken over prompts s and response tokens a)\")\n\n\ndef policy_gradient():\n    text(\"For notational simplicity, let *a* denote the entire response.\")\n\n    text(\"We want to maximize expected reward with respect to the policy \u03c0:\")\n    text(\"E[R] = \u222b p(s) \u03c0(a | s) R(s, a)\")\n\n    text(\"Obvious thing to do is to take the gradient:\")\n    text(\"\u2207 E[R] = \u222b p(s) \u2207 \u03c0(a | s) R(s, a)\")\n    text(\"\u2207 E[R] = \u222b p(s) \u03c0(a | s) \u2207 log \u03c0(a | s) R(s, a)\")\n    text(\"\u2207 E[R] = E[\u2207 log \u03c0(a | s) R(s, a)]\")\n\n    text(\"Naive policy gradient:\")\n    text(\"- Sample prompt s, sample response a ~ \u03c0(a | s)\")\n    text(\"- Update parameters based on \u2207 log \u03c0(a | s) R(s, a) (same as SFT, but weighted by R(s, a))\")\n\n    text(\"Setting: R(s, a) \u2208 {0, 1} = whether response is correct or not\")\n    text(\"- Naive policy gradient only updates on correct responses\")\n    text(\"- Like SFT, but dataset changing over time as policy changes\")\n\n    text(\"Challenge: high noise/variance\")\n    text(\"In this setting, sparse rewards (few responses get reward 1, most get 0)\")\n    text(\"In contrast: in RLHF, reward models (learned from pairwise preferences) are more continuous\")\n\n    text(\"### Baselines\")\n    text(\"Recall \u2207 E[R] = E[\u2207 log \u03c0(a | s) R(s, a)]\")\n    text(\"\u2207 log \u03c0(a | s) R(s, a) is an unbiased estimate of \u2207 E[R], but maybe there are others with lower variance...\")\n\n    text(\"Example: two states\")\n    text(\"- s1: a1 \u2192 reward 11, a2 \u2192 reward 9\")\n    text(\"- s2: a1 \u2192 reward 0, a2 \u2192 reward 2\")\n    text(\"Don't want s1 \u2192 a2 (reward 9) because a1 is better, want s2 \u2192 a2 (reward 2), but 9 > 2\")\n\n    text(\"Idea: maximize the baselined reward: E[R - b(s)]\")\n    text(\"This is just E[R] shifted by a constant E[b(s)] that doesn't depend on the policy \u03c0\")\n    text(\"We update based on \u2207 log \u03c0(a | s) (R(s, a) - b(s))\")\n\n    text(\"What b(s) should we use?\")\n\n    text(\"Example: two states\")\n    text(\"Assuming uniform distribution over (s, a) and |\u2207 \u03c0(a | s)| = 1\")\n    naive_variance = torch.std(torch.tensor([11., 9, 0, 2]))  # @inspect naive_variance\n    text(\"Define baseline b(s1) = 10, b(s2) = 1\")\n    baseline_variance = torch.std(torch.tensor([11. - 10, 9 - 10, 0 - 1, 2 - 1]))  # @inspect baseline_variance\n    text(f\"Variance reduced from {naive_variance:.3f} to {baseline_variance:.3f}\")\n\n    text(\"Optimal b*(s) = E[(\u2207 \u03c0(a | s))^2 R | s] / E[(\u2207 \u03c0(a | s))^2 | s] (for one-parameter models)\")\n    text(\"This is difficult to compute...\")\n    text(\"...so heuristic is to use the mean reward:\")\n    text(\"b(s) = E[R | s]\")\n    text(\"This is still hard to compute and must be estimated.\")\n\n    text(\"### Advantage functions\")\n    text(\"This choice of b(s) has connections to advantage functions.\")\n    text(\"- V(s) = E[R | s] = expected reward from state s\")\n    text(\"- Q(s, a) = E[R | s, a] = expected reward from state s taking action a\")\n    text(\"(Note: Q and R are the same here, because we're assuming *a* has all actions and we have outcome rewards.)\")\n\n    text(\"Definition (advantage): A(s, a) = Q(s, a) - V(s)\")\n    text(\"Intuition: how much better is action a than expected from state s\")\n\n    text(\"If b(s) = E[R | s], then the baselined reward is identical to the advantage!\")\n    text(\"E[R - b(s)] = A(s, a)\")\n\n    text(\"In general:\")\n    text(\"- Ideal: E[\u2207 log \u03c0(a | s) R(s, a)]\")\n    text(\"- Estimate: \u2207 log \u03c0(a | s) \u03b4\")\n    text(\"There are multiple choices of \u03b4, as we'll see later.\")\n\n    named_link(\"CS224R lecture notes\", \"https://cs224r.stanford.edu/slides/03_cs224r_policy_gradients_2025.pdf\")\n\n\ndef training_walkthrough():\n    text(\"Group Relative Policy Optimization (GRPO) \"), link(grpo)\n    text(\"- Simplification to PPO that removes the critic (value function)\")\n    text(\"- Leverages the group structure in the LM setting (multiple responses per prompt), which provides a natural baseline b(s).\")\n    image(\"images/grpo-algorithm.png\", width=700)\n\n    simple_task()        # Define a simple task\n    simple_model()       # Define a simple model\n\n    text(\"Let's now define the GRPO algorithm.\")\n    run_policy_gradient(num_epochs=1, num_steps_per_epoch=1)\n\n    text(\"Let's actually train some models.\")\n    experiments()\n\n\ndef simple_task():\n    text(\"Task: sorting n numbers\")\n\n    text(\"Prompt: n numbers\")\n    prompt = [1, 0, 2]\n    text(\"Response: n numbers\")\n    response = [0, 1, 2]\n\n    text(\"Reward should capture how close to sorted the response is.\")\n\n    text(\"Define a reward that returns the number of positions where the response matches the ground truth.\")\n    reward = sort_distance_reward([3, 1, 0, 2], [0, 1, 2, 3])  # @inspect reward\n    reward = sort_distance_reward([3, 1, 0, 2], [7, 2, 2, 5])  # @inspect reward  @stepover\n    reward = sort_distance_reward([3, 1, 0, 2], [0, 3, 1, 2])  # @inspect reward  @stepover\n\n    text(\"Define an alternative reward that gives more partial credit.\")\n    reward = sort_inclusion_ordering_reward([3, 1, 0, 2], [0, 1, 2, 3])  # @inspect reward\n    reward = sort_inclusion_ordering_reward([3, 1, 0, 2], [7, 2, 2, 5])  # @inspect reward  @stepover\n    reward = sort_inclusion_ordering_reward([3, 1, 0, 2], [0, 3, 1, 2])  # @inspect reward  @stepover\n\n    text(\"Note that the second reward function provides more credit to the 3rd response than the first reward function.\")\n\n\ndef simple_model():\n    text(\"Define a simple model that maps prompts to responses\")\n    text(\"- Assume fixed prompt and response length\")\n    text(\"- Captures positional information with separate per-position parameters\")\n    text(\"- Decode each position in the response independently (not autoregressive)\")\n\n    model = Model(vocab_size=3, embedding_dim=10, prompt_length=3, response_length=3)\n\n    text(\"Start with a prompt s\")\n    prompts = torch.tensor([[1, 0, 2]])  # [batch pos]\n\n    text(\"Generate responses a\")\n    torch.manual_seed(10)\n    responses = generate_responses(prompts=prompts, model=model, num_responses=5)  # [batch trial pos]  @inspect responses\n\n    text(\"Compute rewards R of these responses:\")\n    rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards\n\n    text(\"Compute deltas \u03b4 given the rewards R (for performing the updates)\")\n    deltas = compute_deltas(rewards=rewards, mode=\"rewards\")  # [batch trial]  @inspect deltas\n    deltas = compute_deltas(rewards=rewards, mode=\"centered_rewards\")  # [batch trial]  @inspect deltas\n    deltas = compute_deltas(rewards=rewards, mode=\"normalized_rewards\")  # [batch trial]  @inspect deltas\n    deltas = compute_deltas(rewards=rewards, mode=\"max_rewards\")  # [batch trial]  @inspect deltas\n\n    text(\"Compute log probabilities of these responses:\")\n    log_probs = compute_log_probs(prompts=prompts, responses=responses, model=model)  # [batch trial]  @inspect log_probs\n\n    text(\"Compute loss so that we can use to update the model parameters\")\n    loss = compute_loss(log_probs=log_probs, deltas=deltas, mode=\"naive\")  # @inspect loss\n\n    freezing_parameters()\n\n    old_model = Model(vocab_size=3, embedding_dim=10, prompt_length=3, response_length=3)  # Pretend this is an old checkpoint @stepover\n    old_log_probs = compute_log_probs(prompts=prompts, responses=responses, model=old_model)  # @stepover\n    loss = compute_loss(log_probs=log_probs, deltas=deltas, mode=\"unclipped\", old_log_probs=old_log_probs)  # @inspect loss\n    loss = compute_loss(log_probs=log_probs, deltas=deltas, mode=\"clipped\", old_log_probs=old_log_probs)  # @inspect loss\n\n    text(\"Sometimes, we can use an explicit KL penalty to regularize the model.\")\n    text(\"This can be useful if you want RL a new capability into a model, but you don't want it to forget its original capabilities.\")\n    text(\"KL(p || q) = E_{x ~ p}[log(p(x)/q(x))]\")\n    text(\"KL(p || q) = E_{x ~ p}[-log(q(x)/p(x))]\")\n    text(\"KL(p || q) = E_{x ~ p}[q(x)/p(x) - log(q(x)/p(x)) - 1] because E_{x ~ p}[q(x)/p(x)] = 1\")\n    kl_penalty = compute_kl_penalty(log_probs=log_probs, ref_log_probs=old_log_probs)  # @inspect kl_penalty\n\n    text(\"Summary:\")\n    text(\"- Generate responses\")\n    text(\"- Compute rewards R and \u03b4 (rewards, centered rewards, normalized rewards, max rewards)\")\n    text(\"- Compute log probs of responses\")\n    text(\"- Compute loss from log probs and \u03b4 (naive, unclipped, clipped)\")\n\n\ndef freezing_parameters():\n    text(\"Motivation: in GRPO you'll see ratios: p(a | s) / p_old(a | s)\")\n    text(\"When you're optimizing, it is important to freeze and not differentiate through p_old\")\n    w = torch.tensor(2., requires_grad=True)\n    p = torch.nn.Sigmoid()(w)\n    p_old = torch.nn.Sigmoid()(w)\n    ratio = p / p_old\n    ratio.backward()\n    grad = w.grad  # @inspect grad\n\n    text(\"Do it properly:\")\n    w = torch.tensor(2., requires_grad=True)\n    p = torch.nn.Sigmoid()(w)\n    with torch.no_grad():  # Important: treat p_old as a constant!\n        p_old = torch.nn.Sigmoid()(w)\n    ratio = p / p_old\n    ratio.backward()\n    grad = w.grad  # @inspect grad\n\n\ndef compute_reward(prompts: torch.Tensor, responses: torch.Tensor, reward_fn: Callable[[list[int], list[int]], float]) -> torch.Tensor:\n    \"\"\"\n    Args:\n        prompts (int[batch pos])\n        responses (int[batch trial pos])\n    Returns:\n        rewards (float[batch trial])\n    \"\"\"\n    batch_size, num_responses, _ = responses.shape\n    rewards = torch.empty(batch_size, num_responses, dtype=torch.float32)\n    for i in range(batch_size):\n        for j in range(num_responses):\n            rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])\n    return rewards\n\n\ndef sort_distance_reward(prompt: list[int], response: list[int]) -> float:  # @inspect prompt, @inspect response\n    \"\"\"\n    Return how close response is to ground_truth = sorted(prompt).\n    In particular, compute number of positions where the response matches the ground truth.\n    \"\"\"\n    assert len(prompt) == len(response)\n    ground_truth = sorted(prompt)\n    return sum(1 for x, y in zip(response, ground_truth) if x == y)\n\n\ndef sort_inclusion_ordering_reward(prompt: list[int], response: list[int]) -> float:  # @inspect prompt, @inspect response\n    \"\"\"\n    Return how close response is to ground_truth = sorted(prompt).\n    \"\"\"\n    assert len(prompt) == len(response)\n\n    # Give one point for each token in the prompt that shows up in the response\n    inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward\n\n    # Give one point for each adjacent pair in response that's sorted\n    ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward\n\n    return inclusion_reward + ordering_reward\n\n\nclass Model(nn.Module):\n    def __init__(self, vocab_size: int, embedding_dim: int, prompt_length: int, response_length: int):\n        super().__init__()\n        self.embedding_dim = embedding_dim\n        self.embedding = nn.Embedding(vocab_size, embedding_dim)\n        # For each position, we have a matrix for encoding and a matrix for decoding\n        self.encode_weights = nn.Parameter(torch.randn(prompt_length, embedding_dim, embedding_dim) / math.sqrt(embedding_dim))\n        self.decode_weights = nn.Parameter(torch.randn(response_length, embedding_dim, embedding_dim) / math.sqrt(embedding_dim))\n\n    def forward(self, prompts: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Args:\n            prompts: int[batch pos]\n        Returns:\n            logits: float[batch pos vocab]\n        \"\"\"\n        # Embed the prompts\n        embeddings = self.embedding(prompts)   # [batch pos dim]\n\n        # Transform using per prompt position matrix, collapse into one vector\n        encoded = einsum(embeddings, self.encode_weights, \"batch pos dim1, pos dim1 dim2 -> batch dim2\")\n\n        # Turn into one vector per response position\n        decoded = einsum(encoded, self.decode_weights, \"batch dim2, pos dim2 dim1 -> batch pos dim1\")\n\n        # Convert to logits (input and output share embeddings)\n        logits = einsum(decoded, self.embedding.weight, \"batch pos dim1, vocab dim1 -> batch pos vocab\")\n\n        return logits\n\n\ndef generate_responses(prompts: torch.Tensor, model: Model, num_responses: int) -> torch.Tensor:\n    \"\"\"\n    Args:\n        prompts (int[batch pos])\n    Returns:\n        generated responses: int[batch trial pos]\n\n    Example (batch_size = 3, prompt_length = 3, num_responses = 2, response_length = 4)\n    p1 p1 p1 r1 r1 r1 r1\n             r2 r2 r2 r2\n    p2 p2 p2 r3 r3 r3 r3\n             r4 r4 r4 r4\n    p3 p3 p3 r5 r5 r5 r5\n             r6 r6 r6 r6\n    \"\"\"\n    logits = model(prompts)  # [batch pos vocab]\n    batch_size = prompts.shape[0]\n\n    # Sample num_responses (independently) for each [batch pos]\n    flattened_logits = rearrange(logits, \"batch pos vocab -> (batch pos) vocab\")\n    flattened_responses = torch.multinomial(softmax(flattened_logits, dim=-1), num_samples=num_responses, replacement=True)  # [batch pos trial]\n    responses = rearrange(flattened_responses, \"(batch pos) trial -> batch trial pos\", batch=batch_size)\n    return responses\n\n\ndef compute_log_probs(prompts: torch.Tensor, responses: torch.Tensor, model: Model) -> torch.Tensor:\n    \"\"\"\n    Args:\n        prompts (int[batch pos])\n        responses (int[batch trial pos])\n    Returns:\n        log_probs (float[batch trial pos]) under the model\n    \"\"\"\n    # Compute log prob of responses under model\n    logits = model(prompts)  # [batch pos vocab]\n    log_probs = F.log_softmax(logits, dim=-1)  # [batch pos vocab]\n\n    # Replicate to align with responses\n    num_responses = responses.shape[1]\n    log_probs = repeat(log_probs, \"batch pos vocab -> batch trial pos vocab\", trial=num_responses)  # [batch trial pos vocab]\n\n    # Index into log_probs using responses\n    log_probs = log_probs.gather(dim=-1, index=responses.unsqueeze(-1)).squeeze(-1)  # [batch trial pos]\n\n    return log_probs\n\n\ndef compute_deltas(rewards: torch.Tensor, mode: str) -> torch.Tensor:  # @inspect rewards\n    \"\"\"\n    Args:\n        rewards (float[batch trial])\n    Returns:\n        deltas (float[batch trial]) which are advantage-like quantities for updating\n    \"\"\"\n    if mode == \"rewards\":\n        return rewards\n\n    if mode == \"centered_rewards\":\n        # Compute mean over all the responses (trial) for each prompt (batch)\n        mean_rewards = rewards.mean(dim=-1, keepdim=True)  # @inspect mean_rewards\n        centered_rewards = rewards - mean_rewards  # @inspect centered_rewards\n        return centered_rewards\n\n    if mode == \"normalized_rewards\":\n        mean_rewards = rewards.mean(dim=-1, keepdim=True)  # @inspect mean_rewards\n        std_rewards = rewards.std(dim=-1, keepdim=True)  # @inspect std_rewards\n        centered_rewards = rewards - mean_rewards  # @inspect centered_rewards\n        normalized_rewards = centered_rewards / (std_rewards + 1e-5)  # @inspect normalized_rewards\n        return normalized_rewards\n\n    if mode == \"max_rewards\":\n        # Zero out any reward that isn't the maximum for each batch\n        max_rewards = rewards.max(dim=-1, keepdim=True)[0]\n        max_rewards = torch.where(rewards == max_rewards, rewards, torch.zeros_like(rewards))\n        return max_rewards\n\n    raise ValueError(f\"Unknown mode: {mode}\")\n\n\ndef compute_loss(log_probs: torch.Tensor, deltas: torch.Tensor, mode: str, old_log_probs: torch.Tensor | None = None) -> torch.Tensor:\n    if mode == \"naive\":\n        return -einsum(log_probs, deltas, \"batch trial pos, batch trial -> batch trial pos\").mean()\n\n    if mode == \"unclipped\":\n        ratios = torch.exp(log_probs - old_log_probs)  # [batch trial]\n        return -einsum(ratios, deltas, \"batch trial pos, batch trial -> batch trial pos\").mean()\n\n    if mode == \"clipped\":\n        epsilon = 0.01\n        unclipped_ratios = torch.exp(log_probs - old_log_probs)  # [batch trial]\n        unclipped = einsum(unclipped_ratios, deltas, \"batch trial pos, batch trial -> batch trial pos\")\n\n        clipped_ratios = torch.clamp(unclipped_ratios, min=1 - epsilon, max=1 + epsilon)\n        clipped = einsum(clipped_ratios, deltas, \"batch trial pos, batch trial -> batch trial pos\")\n        return -torch.minimum(unclipped, clipped).mean()\n\n    raise ValueError(f\"Unknown mode: {mode}\")\n\ndef compute_kl_penalty(log_probs: torch.Tensor, ref_log_probs: torch.Tensor) -> torch.Tensor:\n    \"\"\"\n    Compute an estimate of KL(model | ref_model), where the models are given by:\n        log_probs [batch trial pos vocab]\n        ref_log_probs [batch trial pos vocab]\n    Use the estimate:\n        KL(p || q) = E_p[q/p - log(q/p) - 1]\n    \"\"\"\n    return (torch.exp(ref_log_probs - log_probs) - (ref_log_probs - log_probs) - 1).sum(dim=-1).mean()\n\n\ndef run_policy_gradient(num_epochs: int = 100,\n                        num_steps_per_epoch: int = 10,\n                        compute_ref_model_period: int = 10,\n                        num_responses: int = 10,\n                        deltas_mode: str = \"rewards\",\n                        loss_mode: str = \"naive\",\n                        kl_penalty: float = 0.0,\n                        reward_fn: Callable[[list[int], list[int]], float] = sort_inclusion_ordering_reward,\n                        use_cache: bool = False) -> tuple[str, str]:\n    \"\"\"Train a model using policy gradient.\n    Return:\n    - Path to the image of the learning curve.\n    - Path to the log file\n    \"\"\"\n    torch.manual_seed(5)\n\n    image_path = f\"var/policy_gradient_{deltas_mode}_{loss_mode}.png\"\n    log_path = f\"var/policy_gradient_{deltas_mode}_{loss_mode}.txt\"\n\n    # Already ran, just cache it\n    if use_cache and os.path.exists(image_path) and os.path.exists(log_path):\n        return image_path, log_path\n\n    # Define the data\n    prompts = torch.tensor([[1, 0, 2], [3, 2, 4], [1, 2, 3]])\n    vocab_size = prompts.max() + 1\n    prompt_length = response_length = prompts.shape[1]\n\n    model = Model(vocab_size=vocab_size, embedding_dim=10, prompt_length=prompt_length, response_length=response_length)\n    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)\n\n    records = []\n    ref_log_probs = None\n    ref_model = None\n    old_log_probs = None\n\n    if use_cache:\n        out = open(log_path, \"w\")\n    else:\n        out = sys.stdout\n\n    for epoch in tqdm(range(num_epochs), desc=\"epoch\"):\n        # If using KL penalty, need to get the reference model (freeze it every few epochs)\n        if kl_penalty != 0:\n            if epoch % compute_ref_model_period == 0:\n                ref_model = model.clone()\n\n        # Sample responses and evaluate their rewards\n        responses = generate_responses(prompts=prompts, model=model, num_responses=num_responses)  # [batch trial pos]\n        rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=reward_fn)  # [batch trial]\n        deltas = compute_deltas(rewards=rewards, mode=deltas_mode)  # [batch trial]\n\n        if kl_penalty != 0:  # Compute under the reference model\n            with torch.no_grad():\n                ref_log_probs = compute_log_probs(prompts=prompts, responses=responses, model=ref_model)  # [batch trial]\n\n        if loss_mode != \"naive\":  # Compute under the current model (but freeze while we do the inner steps)\n            with torch.no_grad():\n                old_log_probs = compute_log_probs(prompts=prompts, responses=responses, model=model)  # [batch trial]\n\n        # Take a number of steps given the responses\n        for step in range(num_steps_per_epoch):\n            log_probs = compute_log_probs(prompts=prompts, responses=responses, model=model)  # [batch trial]\n            loss = compute_loss(log_probs=log_probs, deltas=deltas, mode=loss_mode, old_log_probs=old_log_probs)  # @inspect loss\n            if kl_penalty != 0:\n                loss += kl_penalty * compute_kl_penalty(log_probs=log_probs, ref_log_probs=ref_log_probs)\n\n            # Print information\n            print_information(epoch=epoch, step=step, loss=loss, prompts=prompts, rewards=rewards, responses=responses, log_probs=log_probs, deltas=deltas, out=out)\n            global_step = epoch * num_steps_per_epoch + step\n            records.append({\"epoch\": epoch, \"step\": global_step, \"loss\": loss.item(), \"mean_reward\": rewards.mean().item()})\n\n            # Backprop and update parameters\n            optimizer.zero_grad()\n            loss.backward()\n            optimizer.step()\n    if use_cache:\n        out.close()\n\n    if use_cache:\n        # Plot step versus loss and reward in two subplots\n        steps = [r[\"step\"] for r in records]\n        losses = [r[\"loss\"] for r in records]\n        rewards = [r[\"mean_reward\"] for r in records]\n\n        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))\n\n        # Loss subplot\n        ax1.plot(steps, losses)\n        ax1.set_xlabel(\"Step\")\n        ax1.set_ylabel(\"Train Loss\")\n        ax1.set_title(\"Train Loss\")\n\n        # Reward subplot\n        ax2.plot(steps, rewards)\n        ax2.set_xlabel(\"Step\")\n        ax2.set_ylabel(\"Mean Reward\")\n        ax2.set_title(\"Mean Reward\")\n\n        plt.tight_layout()\n        plt.savefig(image_path)\n        plt.close()\n\n    return image_path, log_path\n\n\ndef print_information(epoch: int, step: int, loss: torch.Tensor, prompts: torch.Tensor, rewards: torch.Tensor, responses: torch.Tensor, log_probs: torch.Tensor, deltas: torch.Tensor, out):\n    print(f\"epoch = {epoch}, step = {step}, loss = {loss:.3f}, reward = {rewards.mean():.3f}\", file=out)\n    if epoch % 1 == 0 and step % 5 == 0:\n        for batch in range(prompts.shape[0]):\n            print(f\"  prompt = {prompts[batch, :]}\", file=out)\n            for trial in range(responses.shape[1]):\n                print(f\"    response = {responses[batch, trial, :]}, log_probs = {tstr(log_probs[batch, trial])}, reward = {rewards[batch, trial]}, delta = {deltas[batch, trial]:.3f}\", file=out)\n\n\ndef tstr(x: torch.Tensor) -> str:\n    return \"[\" + \", \".join(f\"{x[i]:.3f}\" for i in range(x.shape[0])) + \"]\"\n\n\ndef experiments():\n    text(\"Let's start with updating based on raw rewards.\")\n    image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode=\"rewards\", loss_mode=\"naive\", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover\n    image(image_path, width=600), link(log_path)\n    text(\"Looking through the output, you'll see that by the end, we haven't really learned sorting very well (and this is still the training set).\")\n\n    text(\"Let's try using centered rewards.\")\n    image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode=\"centered_rewards\", loss_mode=\"naive\", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover\n    image(image_path, width=600), link(log_path)\n    text(\"This seems to help, as:\")\n    text(\"- Suboptimal rewards get a negative gradient update, and\")\n    text(\"- If all the responses for a given prompt have the same reward, then we don't update.\")\n    text(\"Overall, this is better, but we're still getting stuck in local optima.\")\n\n    text(\"Finally, let's try normalizing by the standard deviation.\")\n    image_path, log_path = run_policy_gradient(num_epochs=100, num_steps_per_epoch=10, num_responses=10, deltas_mode=\"normalized_rewards\", loss_mode=\"naive\", reward_fn=sort_inclusion_ordering_reward, use_cache=True)  # @stepover\n    image(image_path, width=600), link(log_path)\n    text(\"There is not much difference here, and indeed, variants like Dr. GRPO do not perform this normalization to avoid length bias (not an issue here since all responses have the same length. \"), link(\"https://arxiv.org/abs/2503.20783\")\n\n    text(\"Overall, as you can see, reinforcement learning is not trivial, and you can easily get stuck in suboptimal states.\")\n    text(\"The hyperparameters could probably be tuned better...\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
   },
   "steps": [
     {
@@ -4434,28 +4434,28 @@
           [
             [
               1,
-              1,
-              1
-            ],
-            [
-              1,
-              2,
-              1
-            ],
-            [
-              1,
-              2,
-              1
-            ],
-            [
-              1,
-              1,
+              0,
               2
             ],
             [
               1,
-              2,
+              0,
+              2
+            ],
+            [
+              1,
+              0,
               1
+            ],
+            [
+              1,
+              0,
+              2
+            ],
+            [
+              1,
+              0,
+              2
             ]
           ]
         ]
@@ -4757,8 +4757,8 @@
         ],
         "response": [
           1,
-          1,
-          1
+          0,
+          2
         ]
       },
       "renderings": [],
@@ -4919,7 +4919,7 @@
         }
       ],
       "env": {
-        "inclusion_reward": 1
+        "inclusion_reward": 3
       },
       "renderings": [],
       "stdout": "",
@@ -5041,7 +5041,7 @@
         }
       ],
       "env": {
-        "ordering_reward": 2
+        "ordering_reward": 1
       },
       "renderings": [],
       "stdout": "",
@@ -5222,7 +5222,472 @@
         ],
         "response": [
           1,
-          2,
+          0,
+          2
+        ]
+      },
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 268,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "assert len(prompt) == len(response)"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 271,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 271,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 271,
+          "function_name": "<genexpr>",
+          "code": "inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 271,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward"
+        }
+      ],
+      "env": {
+        "inclusion_reward": 3
+      },
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 274,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 274,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 274,
+          "function_name": "<genexpr>",
+          "code": "ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 274,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward"
+        }
+      ],
+      "env": {
+        "ordering_reward": 1
+      },
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 276,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "return inclusion_reward + ordering_reward"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 249,
+          "function_name": "compute_reward",
+          "code": "for j in range(num_responses):"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        }
+      ],
+      "env": {},
+      "renderings": [],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "stack": [
+        {
+          "path": "lecture_17.py",
+          "line_number": 23,
+          "function_name": "main",
+          "code": "training_walkthrough()"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 135,
+          "function_name": "training_walkthrough",
+          "code": "simple_model()       # Define a simple model"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 183,
+          "function_name": "simple_model",
+          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 250,
+          "function_name": "compute_reward",
+          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
+        },
+        {
+          "path": "lecture_17.py",
+          "line_number": 264,
+          "function_name": "sort_inclusion_ordering_reward",
+          "code": "def sort_inclusion_ordering_reward(prompt: list[int], response: list[int]) -> float:  # @inspect prompt, @inspect response"
+        }
+      ],
+      "env": {
+        "prompt": [
+          1,
+          0,
+          2
+        ],
+        "response": [
+          1,
+          0,
           1
         ]
       },
@@ -5687,8 +6152,8 @@
         ],
         "response": [
           1,
-          2,
-          1
+          0,
+          2
         ]
       },
       "renderings": [],
@@ -5849,7 +6314,7 @@
         }
       ],
       "env": {
-        "inclusion_reward": 2
+        "inclusion_reward": 3
       },
       "renderings": [],
       "stdout": "",
@@ -6152,473 +6617,8 @@
         ],
         "response": [
           1,
-          1,
-          2
-        ]
-      },
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 268,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "assert len(prompt) == len(response)"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 271,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 271,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 271,
-          "function_name": "<genexpr>",
-          "code": "inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 271,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "inclusion_reward = sum(1 for x in prompt if x in response)  # @inspect inclusion_reward"
-        }
-      ],
-      "env": {
-        "inclusion_reward": 2
-      },
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 274,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 274,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 274,
-          "function_name": "<genexpr>",
-          "code": "ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 274,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "ordering_reward = sum(1 for x, y in zip(response, response[1:]) if x <= y)  # @inspect ordering_reward"
-        }
-      ],
-      "env": {
-        "ordering_reward": 2
-      },
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 276,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "return inclusion_reward + ordering_reward"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 249,
-          "function_name": "compute_reward",
-          "code": "for j in range(num_responses):"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        }
-      ],
-      "env": {},
-      "renderings": [],
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "stack": [
-        {
-          "path": "lecture_17.py",
-          "line_number": 23,
-          "function_name": "main",
-          "code": "training_walkthrough()"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 135,
-          "function_name": "training_walkthrough",
-          "code": "simple_model()       # Define a simple model"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 183,
-          "function_name": "simple_model",
-          "code": "rewards = compute_reward(prompts=prompts, responses=responses, reward_fn=sort_inclusion_ordering_reward)  # [batch trial]  @inspect rewards"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 250,
-          "function_name": "compute_reward",
-          "code": "rewards[i, j] = reward_fn(prompts[i, :], responses[i, j, :])"
-        },
-        {
-          "path": "lecture_17.py",
-          "line_number": 264,
-          "function_name": "sort_inclusion_ordering_reward",
-          "code": "def sort_inclusion_ordering_reward(prompt: list[int], response: list[int]) -> float:  # @inspect prompt, @inspect response"
-        }
-      ],
-      "env": {
-        "prompt": [
-          1,
           0,
           2
-        ],
-        "response": [
-          1,
-          2,
-          1
         ]
       },
       "renderings": [],
@@ -6779,7 +6779,7 @@
         }
       ],
       "env": {
-        "inclusion_reward": 2
+        "inclusion_reward": 3
       },
       "renderings": [],
       "stdout": "",
@@ -7097,11 +7097,11 @@
       "env": {
         "rewards": [
           [
-            3.0,
-            3.0,
+            4.0,
+            4.0,
             3.0,
             4.0,
-            3.0
+            4.0
           ]
         ]
       },
@@ -7199,11 +7199,11 @@
       "env": {
         "rewards": [
           [
-            3.0,
-            3.0,
+            4.0,
+            4.0,
             3.0,
             4.0,
-            3.0
+            4.0
           ]
         ]
       },
@@ -7299,11 +7299,11 @@
       "env": {
         "deltas": [
           [
-            3.0,
-            3.0,
+            4.0,
+            4.0,
             3.0,
             4.0,
-            3.0
+            4.0
           ]
         ]
       },
@@ -7367,11 +7367,11 @@
       "env": {
         "rewards": [
           [
-            3.0,
-            3.0,
+            4.0,
+            4.0,
             3.0,
             4.0,
-            3.0
+            4.0
           ]
         ]
       },
@@ -7473,7 +7473,7 @@
       "env": {
         "mean_rewards": [
           [
-            3.200000047683716
+            3.799999952316284
           ]
         ]
       },
@@ -7511,11 +7511,11 @@
       "env": {
         "centered_rewards": [
           [
-            -0.20000004768371582,
-            -0.20000004768371582,
-            -0.20000004768371582,
-            0.7999999523162842,
-            -0.20000004768371582
+            0.20000004768371582,
+            0.20000004768371582,
+            -0.7999999523162842,
+            0.20000004768371582,
+            0.20000004768371582
           ]
         ]
       },
@@ -7579,11 +7579,11 @@
       "env": {
         "deltas": [
           [
-            -0.20000004768371582,
-            -0.20000004768371582,
-            -0.20000004768371582,
-            0.7999999523162842,
-            -0.20000004768371582
+            0.20000004768371582,
+            0.20000004768371582,
+            -0.7999999523162842,
+            0.20000004768371582,
+            0.20000004768371582
           ]
         ]
       },
@@ -7647,11 +7647,11 @@
       "env": {
         "rewards": [
           [
-            3.0,
-            3.0,
+            4.0,
+            4.0,
             3.0,
             4.0,
-            3.0
+            4.0
           ]
         ]
       },
@@ -7785,7 +7785,7 @@
       "env": {
         "mean_rewards": [
           [
-            3.200000047683716
+            3.799999952316284
           ]
         ]
       },
@@ -7861,11 +7861,11 @@
       "env": {
         "centered_rewards": [
           [
-            -0.20000004768371582,
-            -0.20000004768371582,
-            -0.20000004768371582,
-            0.7999999523162842,
-            -0.20000004768371582
+            0.20000004768371582,
+            0.20000004768371582,
+            -0.7999999523162842,
+            0.20000004768371582,
+            0.20000004768371582
           ]
         ]
       },
@@ -7903,11 +7903,11 @@
       "env": {
         "normalized_rewards": [
           [
-            -0.44720369577407837,
-            -0.44720369577407837,
-            -0.44720369577407837,
-            1.7888141870498657,
-            -0.44720369577407837
+            0.44720369577407837,
+            0.44720369577407837,
+            -1.7888141870498657,
+            0.44720369577407837,
+            0.44720369577407837
           ]
         ]
       },
@@ -7971,11 +7971,11 @@
       "env": {
         "deltas": [
           [
-            -0.44720369577407837,
-            -0.44720369577407837,
-            -0.44720369577407837,
-            1.7888141870498657,
-            -0.44720369577407837
+            0.44720369577407837,
+            0.44720369577407837,
+            -1.7888141870498657,
+            0.44720369577407837,
+            0.44720369577407837
           ]
         ]
       },
@@ -8039,11 +8039,11 @@
       "env": {
         "rewards": [
           [
-            3.0,
-            3.0,
+            4.0,
+            4.0,
             3.0,
             4.0,
-            3.0
+            4.0
           ]
         ]
       },
@@ -8299,11 +8299,11 @@
       "env": {
         "deltas": [
           [
-            0.0,
-            0.0,
+            4.0,
+            4.0,
             0.0,
             4.0,
-            0.0
+            4.0
           ]
         ]
       },
@@ -8952,29 +8952,29 @@
         "log_probs": [
           [
             [
-              -0.01567213609814644,
-              -1.005124807357788,
-              -0.05150599032640457
+              -1.3470558769768104e-05,
+              -8.106198947643861e-06,
+              -0.11910787224769592
             ],
             [
-              -0.01567213609814644,
-              -0.8296878337860107,
-              -0.05150599032640457
+              -1.3470558769768104e-05,
+              -8.106198947643861e-06,
+              -0.11910787224769592
             ],
             [
-              -0.01567213609814644,
-              -0.8296878337860107,
-              -0.05150599032640457
+              -1.3470558769768104e-05,
+              -8.106198947643861e-06,
+              -2.1866886615753174
             ],
             [
-              -0.01567213609814644,
-              -1.005124807357788,
-              -2.992189884185791
+              -1.3470558769768104e-05,
+              -8.106198947643861e-06,
+              -0.11910787224769592
             ],
             [
-              -0.01567213609814644,
-              -0.8296878337860107,
-              -0.05150599032640457
+              -1.3470558769768104e-05,
+              -8.106198947643861e-06,
+              -0.11910787224769592
             ]
           ]
         ]
@@ -9161,7 +9161,7 @@
         }
       ],
       "env": {
-        "loss": 1.0701297521591187
+        "loss": 0.12707141041755676
       },
       "renderings": [],
       "stdout": "",
@@ -10021,7 +10021,7 @@
           "path": "lecture_17.py",
           "line_number": 394,
           "function_name": "compute_loss",
-          "code": "ratios = log_probs / old_log_probs  # [batch trial]"
+          "code": "ratios = torch.exp(log_probs - old_log_probs)  # [batch trial]"
         }
       ],
       "env": {},
@@ -10083,7 +10083,7 @@
         }
       ],
       "env": {
-        "loss": -574.9898071289062
+        "loss": -639.948974609375
       },
       "renderings": [],
       "stdout": "",
@@ -10299,7 +10299,7 @@
           "path": "lecture_17.py",
           "line_number": 399,
           "function_name": "compute_loss",
-          "code": "unclipped_ratios = log_probs / old_log_probs  # [batch trial]"
+          "code": "unclipped_ratios = torch.exp(log_probs - old_log_probs)  # [batch trial]"
         }
       ],
       "env": {},
@@ -10457,7 +10457,7 @@
         }
       ],
       "env": {
-        "loss": -0.5361258387565613
+        "loss": -3.2213265895843506
       },
       "renderings": [],
       "stdout": "",
@@ -10745,7 +10745,7 @@
         }
       ],
       "env": {
-        "kl_penalty": 1.9032036066055298
+        "kl_penalty": 8.248743057250977
       },
       "renderings": [],
       "stdout": "",
