@@ -1,7 +1,7 @@
-from execute_util import link
+from edtrace import link
 
 
-def named_link(name: str, url: str) -> str:
+def named_link(url: str, name: str) -> str:
     return link(title=f" [{name}]", url=url)
 
 
@@ -9,13 +9,13 @@ def article_link(url: str) -> str:
     return link(title=" [article]", url=url)
 
 
-def blog_link(url: str) -> str:
-    return link(title=" [blog]", url=url)
+def post_link(url: str) -> str:
+    return link(title=" [post]", url=url)
 
 
-def x_link(url: str) -> str:
-    return link(title=" [X]", url=url)
-
-
-def youtube_link(url: str) -> str:
+def video_link(url: str) -> str:
     return link(title=" [video]", url=url)
+
+
+def get_local_url(path: str) -> str:
+    return "https://github.com/stanford-cs336/lectures/blob/spring2026/" + path

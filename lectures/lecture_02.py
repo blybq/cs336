@@ -64,6 +64,11 @@ def main():
     checkpointing()
     mixed_precision_training()
 
+def roofline_analysis():
+    b200_bandwidth = 8e12  # 8 TB/sec
+    b200_flops_per_sec = 360e15  # 360 TFLOP/sec (bf16)
+    n = 1024  # Size of matrix
+
 
 def motivating_questions():
     text("Let's do some napkin math.")
