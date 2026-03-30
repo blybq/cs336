@@ -61,7 +61,7 @@ def welcome():
     text("What's new?")
     text("- Same 'from scratch' philosophy")
     text("- Prioritize high value-to-time concepts, don't lose the forest for the trees")
-    text("- More coverage ingredients of modern LMs (mixture of experts, long-context, agents)")
+    text("- More coverage of modern LM ingredients (mixture of experts, long-context, agents)")
 
 
 def why_this_course_exists():
@@ -72,9 +72,9 @@ def why_this_course_exists():
     text("- 2018: researchers downloaded models (e.g., BERT) and fine-tuned them.")
     text("- Today: researchers prompt API models (e.g., GPT/Claude/Gemini).")
 
-    text("Moving up levels of abstractions boosts productivity, but")
+    text("Moving up levels of abstraction boosts productivity, but")
     text("- These abstractions are leaky (in contrast to programming languages or operating systems).")
-    text("- There is still fundamental research to be done that require tearing up the stack.")
+    text("- There is still fundamental research to be done that requires tearing up the stack.")
 
     text("**Full understanding** of this technology is necessary for **fundamental research**.")
 
@@ -116,9 +116,9 @@ def why_this_course_exists():
 
     text("## The bitter lesson")
     text("Wrong interpretation: scale is all that matters, algorithms don't matter.")
-    text("Right interpretation: algorithms that scale is what matters.")
+    text("Right interpretation: algorithms that scale are what matter.")
     text("### accuracy = efficiency x resources")
-    text("In fact, efficiency is way more important at larger scale (can't afford to be wasteful).")
+    text("In fact, efficiency is way more important at larger scales (can't afford to be wasteful).")
     link("https://arxiv.org/abs/2005.04305"), text(" showed 44x algorithmic efficiency on ImageNet between 2012 and 2019.")
 
     text("Framing: what is the best model one can build given a certain compute and data budget?")
@@ -310,9 +310,9 @@ def basics():
     text("- Implement Transformer, cross-entropy loss, AdamW optimizer, training loop")
     text("- Do resource accounting")
     text("- Train on TinyStories and OpenWebText")
-    text("- Leaderboard: minimize OpenWebText perplexity given 90 minutes on a H100 "), link(title="[last year's leaderboard]", url="https://github.com/stanford-cs336/spring2025-assignment1-basics-leaderboard")
+    text("- Leaderboard: minimize OpenWebText perplexity given 45 minutes on a B200 "), link(title="[last year's leaderboard]", url="https://github.com/stanford-cs336/spring2025-assignment1-basics-leaderboard")
 
-    text("High-level principle: everything is about balance the following:")
+    text("High-level principle: everything is about balancing the following:")
     text("- Expressivity (can represent complex dependencies in the data)")
     text("- Stability (keep parameter and gradient norms in goldilocks zone)")
     text("- Efficiency (runs fast on hardware, both training and inference)")
@@ -327,7 +327,7 @@ def systems():
     total_flops = 6 * 70e9 * 1e12  # Training 70B parameters on 1T tokens = 4.2e23 FLOPs @inspect total_flops 
     text("- Model parameters must be moved from memory (HBM) to the compute (SMs)")
     image("images/compute-memory.png", width=300)
-    text("- Example: B200 can perform 360 PFLOP/sec with 8TB/sec memory bandwidth")
+    text("- Example: B200 can perform 2.25 PFLOP/sec (bf16) with 8TB/sec memory bandwidth")
     text("- Roofline analysis: understand whether we're compute-bound or memory-bound")
     text("- Benchmarking and profiling (nsight): see what happens in practice")
 
@@ -336,7 +336,7 @@ def systems():
 
     text("## Kernels")
     text("- Kernel is a function that runs on GPU")
-    text("- When use PyTorch, each primitive operation launches a standard kernel")
+    text("- When using PyTorch, each primitive operation launches a standard kernel")
     text("- Can write custom kernels to make GPUs go brrr")
     text("- Principle: organize computation to minimize data movement")
     text("- Naive: read HBM; compute A; write HBM; read HBM; compute B; write HBM")
@@ -373,7 +373,7 @@ def systems():
 
     text("Recommended book: [How to Scale Your Model](https://jax-ml.github.io/scaling-book/)")
     text("- Nicely lays out how to approach systems for LLMs conceptually")
-    text("- From Google, so it foreground TPUs, but high-level concepts are similar")
+    text("- From Google, so it foregrounds TPUs, but high-level concepts are similar")
 
 
 def scaling_laws():
@@ -397,7 +397,7 @@ def scaling_laws():
     text("- ISOFLOP curves: for multiple small FLOPs budgets, find optimal N")
     text("- Then fit a scaling law to extrapolate to large FLOPs budgets")
     image("images/chinchilla-isoflop.png", width=800)
-    text("TL;DR: D = 20 N is roughly optimal (e.g., 70B parameter model should be trained on ~140B tokens)")
+    text("TL;DR: D = 20 N is roughly optimal (e.g., 70B parameter model should be trained on ~1.4T tokens)")
     text("Caveat: this doesn't take into account inference costs (want a smaller model)")
 
     text("Live example from Marin "), post_link("https://x.com/percyliang/status/2034367256277533100")
@@ -419,7 +419,7 @@ def data():
 
     text("## Evaluation")
     text("What is the purpose of evaluation?")
-    text("1. Internal: guide model development (smoothness across scales, relative matters)")
+    text("1. Internal: guide model development (smoothness across scales, relative performance matters)")
     text("2. External: measure absolute quality of a real use case (ecological validity matters)")
     text("Examples of evaluations:")
     text("1. Perplexity: ideally run on private documents not on Internet (avoid contamination)")
@@ -495,7 +495,7 @@ def tokenization():
 
     text("Summary:")
     text("- Tokenizer: strings ↔ tokens (indices)")
-    text("- Character-based, byte-based, word-based tokenization highly suboptimal")
+    text("- Character-based, byte-based, word-based tokenization are highly suboptimal")
     text("- BPE is an effective heuristic that is data-driven")
     text("- Tokenization is a separate step, maybe one day do it end-to-end from bytes...")
 
@@ -567,7 +567,7 @@ class BPETokenizer(Tokenizer):
 
 
 def get_compression_ratio(string: str, indices: list[int]) -> float:
-    """Given `string` that has been tokenized into `indices`, ."""
+    """Given `string` that has been tokenized into `indices`, return the number of UTF-8 bytes per token.."""
     num_bytes = len(bytes(string, encoding="utf-8"))  # @inspect num_bytes
     num_tokens = len(indices)                       # @inspect num_tokens
     return num_bytes / num_tokens
@@ -705,7 +705,7 @@ def bpe_tokenizer():
     text("BPE was then used by GPT-2. "), link(gpt2_2019)
 
     text("Basic idea: *train* the tokenizer on raw text to construct a vocabulary tailored to the data.")
-    text("Intuition: common sequences of characters are represented by a single token, rare sequences are represented by many tokens.")
+    text("Intuition: common sequences of bytes are represented by a single token, rare sequences are represented by many tokens.")
 
     text("Sketch: start with each byte as a token, and successively merge the most common pair of adjacent tokens.")
 
