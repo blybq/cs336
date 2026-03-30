@@ -54,13 +54,12 @@ def welcome():
     text("## CS336: Language Models From Scratch (Spring 2026)"),
 
     image("images/course-staff.png", width=600)
+    text("...bringing you the 3rd offering of CS336.")
 
-    text("This is the 3rd offering of CS336.")
     text("Lectures from 2nd offering (Spring 2025) are on [YouTube](https://www.youtube.com/playlist?list=PLoROMvodv4rOY23Y0BoGoBGgQ1zmU_MT_).")
-
     text("What's new?")
     text("- Same 'from scratch' philosophy")
-    text("- Prioritize high value-to-time concepts, don't lose the forest for the trees")
+    text("- Prioritize high value-per-time concepts, don't lose the forest for the trees")
     text("- More coverage of modern LM ingredients (mixture of experts, long-context, agents)")
 
 
@@ -78,7 +77,7 @@ def why_this_course_exists():
 
     text("**Full understanding** of this technology is necessary for **fundamental research**.")
 
-    text("Philosophy of this course: **understanding via building**")
+    text("Philosophy of this course: **understanding via building**.")
     text("But there's one small problem...")
 
     text("## The industrialization of language models")
@@ -93,7 +92,7 @@ def why_this_course_exists():
     image("images/gpt4-no-details.png", width=600)
 
     text("Frontier models are out of reach for us.")
-    text("But building small language models (<1B parameters in this class) might not be representative of large language models.")
+    text("We could build small language models (<1B parameters), but this might not be representative of large language models.")
 
     text("Example 1: fraction of FLOPs spent in attention versus MLP changes with scale. "), post_link("https://x.com/stephenroller/status/1579993017234382849")
     image("images/roller-flops.png", width=400)
@@ -275,8 +274,8 @@ def basics():
     text("Popular tokenizer: **Byte-Pair Encoding** (BPE) "), link(sennrich_2016)
     text("Intuition: break input into frequently-occuring chunks")
     text("Efficiency lens")
-    text("- Reduce context length (1000 bytes -> ~250 tokens)")
-    text("- Adaptive computation (more modeling capacity on unexpected byte sequences)")
+    text("- Reduce context length (1000 bytes → ~250 tokens)")
+    text("- Adaptive computation (more modeling capacity on interesting parts of input)")
 
     text("The dream: tokenizer-free model architectures, which operate directly on bytes "), link(byt5_2021), link(megabyte_2023), link(blt_2024), link(tfree_2024), link(hnet_2025)
     text("These are promising, but have not yet been scaled up to the frontier.")
@@ -290,7 +289,7 @@ def basics():
     text("- Positional encodings: sinusoidal, RoPE "), link(rope_2021)
     text("- Normalization: LayerNorm, RMSNorm, QK norm, pre-norm versus post-norm "), link(layernorm_2016), link(rms_norm_2019), link(qk_norm_2023), link(pre_post_norm_2020)
     text("- Attention: full, sparse/local attention, group-query attention (GQA), multi-head latent attention (MLA) "), link(sparse_transformer_2019), link(gqa_2023), link(mla_2024)
-    text("- Recurrent/SSM/linear attention: Mamba, Gated DeltaNet "), link(linear_attention_2020), link(mamba_2_2024), link(gdn_2024), link(mamba_3_2026)
+    text("- Recurrence/state-space models/linear attention: Mamba, Gated DeltaNet "), link(linear_attention_2020), link(mamba_2_2024), link(gdn_2024), link(mamba_3_2026)
     text("- MLP: dense, mixture of experts "), link(moe_2017), link(switch_transformers_2021)
     text("- Shape (hidden dimension, depth, number of heads, number of experts)")
 
@@ -325,8 +324,8 @@ def systems():
     text("## Basics")
     text("- Resource accounting: memory and compute characteristics of a model")
     total_flops = 6 * 70e9 * 1e12  # Training 70B parameters on 1T tokens = 4.2e23 FLOPs @inspect total_flops 
-    text("- Model parameters must be moved from memory (HBM) to the compute (SMs)")
     image("images/compute-memory.png", width=300)
+    text("- Model parameters must be moved from memory (HBM) to the compute (SMs)")
     text("- Example: B200 can perform 2.25 PFLOP/sec (bf16) with 8TB/sec memory bandwidth")
     text("- Roofline analysis: understand whether we're compute-bound or memory-bound")
     text("- Benchmarking and profiling (nsight): see what happens in practice")
@@ -348,7 +347,7 @@ def systems():
     text("## Parallelism")
     text("- What if we have 1024 GPUs?")
     text("- Data movement between GPUs is even slower, but same 'minimize data movement' principle holds")
-    text("- Use collective operations (e.g., gather, reduce, all-reduce)")
+    text("- Use classic collective operations (e.g., gather, reduce, all-reduce)")
     text("- Shard memory (parameters, activations, gradients, optimizer states) across GPUs")
     text("- How to split computation: {data,tensor,pipeline,sequence,expert} parallelism")
     
@@ -566,7 +565,7 @@ class BPETokenizer(Tokenizer):
         return string
 
 
-def get_compression_ratio(string: str, indices: list[int]) -> float:
+def get_compression_ratio(string: str, indices: list[int]) -> float:  # @inspect string indices
     """Given `string` that has been tokenized into `indices`, return the number of UTF-8 bytes per token.."""
     num_bytes = len(bytes(string, encoding="utf-8"))  # @inspect num_bytes
     num_tokens = len(indices)                       # @inspect num_tokens

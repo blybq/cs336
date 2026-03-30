@@ -390,8 +390,8 @@ ling_2_2025 = url_reference("https://arxiv.org/abs/2510.22115")
 
 hnet_2025 = url_reference("https://arxiv.org/abs/2507.07955")
 
-marin_8b_2025 = url_reference("https://marin.readthedocs.io/en/latest/reports/marin-8b-retro/", organization="Marin", description="Marin 8B retro", date="2025")
-marin_32b_2025 = url_reference("https://marin.readthedocs.io/en/latest/reports/marin-32b-retro/", organization="Marin", description="Marin 32B retro", date="2025")
+marin_8b_2025 = url_reference("https://marin.readthedocs.io/en/latest/reports/marin-8b-retro/", organization="Marin", title="[Marin 8B retro]", date="2025")
+marin_32b_2025 = url_reference("https://marin.readthedocs.io/en/latest/reports/marin-32b-retro/", organization="Marin", title="[Marin 32B retro]", date="2025")
 
 olmo_3_2025 = url_reference("https://arxiv.org/abs/2512.13961")
 nemotron_3_2025 = url_reference("https://arxiv.org/abs/2512.20856")
@@ -407,8 +407,8 @@ glm_5_2026 = url_reference("https://arxiv.org/abs/2602.15763", organization="Z.a
 arcee_trinity_2026 = url_reference("https://arxiv.org/abs/2602.17004")
 
 qwen_3_5_2026 = url_reference("https://qwen.ai/blog?id=qwen3.5")
-minimax_m2_5_2026 = url_reference("https://www.minimax.io/news/minimax-m25", organization="Minimax", date="2026")
-xiaomi_mimo_v2_2026 = url_reference("https://mimo.xiaomi.com/mimo-v2-pro", organization="Xiaomi", date="2026")
+minimax_m2_5_2026 = url_reference("https://www.minimax.io/news/minimax-m25", organization="Minimax", title="[MiniMax M2.5]", date="2026")
+xiaomi_mimo_v2_2026 = url_reference("https://mimo.xiaomi.com/mimo-v2-pro", organization="Xiaomi", title="[Xiaomi MIMO v2]", date="2026")
 
 
 mamba_3_2026 = url_reference("https://arxiv.org/abs/2603.15569")
