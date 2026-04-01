@@ -40,6 +40,12 @@ glorot_2010 = Reference(
     url="https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf",
 )
 
+adagrad_2011 = url_reference(
+    "https://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf",
+    authors=["John Duchi", "Elad Hazan", "Yoram Singer"],
+    date="2011",
+)
+
 seq2seq_2014 = url_reference("https://arxiv.org/pdf/1409.3215.pdf", organization="Google", notes="Introduced seq2seq (encode entire sentence into one vector, decode translation)")
 
 adam_2014 = url_reference("https://arxiv.org/pdf/1412.6980.pdf", notes="Introduced Adam optimizer based on RMSProp and momentum")
