@@ -4,9 +4,8 @@ import regex
 from abc import ABC
 from dataclasses import dataclass
 from collections import defaultdict
-import random
 from edtrace import link, text, image
-from lecture_util import article_link, post_link, video_link, named_link
+from lecture_util import article_link, post_link, video_link, get_local_url
 from references import shannon_1950, lstm_1997, brants_2007, bengio_2003, glorot_2010, seq2seq_2014
 from references import bahdanau_2015_attention, transformer_2017, gpt2_2019, t5_2019, kaplan_scaling_laws_2020, mup_2022
 from references import dpo_2023, adamw_2017, adam_2014, grpo, ppo_2017, muon_2024
@@ -179,8 +178,8 @@ def current_lm_landscape():
     text("What is a language model?")
     text("- 2018 (BERT): something you fine-tune")
     text("- 2020 (GPT-3): something you prompt")
-    text("- 2022 (ChatGPT): something you talk to "), named_link("https://huggingface.co/datasets/HuggingFaceTB/smoltalk/viewer/all/train?row=72&conversation-viewer=72", name="example conversation")
-    text("- 2026 (agents): something that acts autonomously "), named_link("https://huggingface.co/datasets/nebius/SWE-rebench-openhands-trajectories/viewer/default/train?conversation-viewer=1", name="example trace")
+    text("- 2022 (ChatGPT): something you talk to "), link(title="example conversation", url="https://huggingface.co/datasets/HuggingFaceTB/smoltalk/viewer/all/train?row=72&conversation-viewer=72")
+    text("- 2026 (agents): something that acts autonomously "), link(title="example trace", url="https://huggingface.co/datasets/nebius/SWE-rebench-openhands-trajectories/viewer/default/train?conversation-viewer=1")
 
     text("The fundamentals are the same (attention, kernels, optimization).")
     text("The specs are different (longer context, inference efficiency matters even more).")
@@ -197,7 +196,7 @@ def what_is_this_program():
 
 
 def course_logistics():
-    text("All information online: "), link("https://stanford-cs336.github.io/spring2026/")
+    text("All information online: "), link(title="course website", url="https://stanford-cs336.github.io/spring2026/")
 
     text("This is a 5-unit class.")
     text("Comment from Spring 2024 course evaluation:")
@@ -304,12 +303,12 @@ def basics():
     text("- MoE specific: load balancing (e.g., aux-free) "), link(auxfree_2024), link(deepseek_v3_2024)
 
     text("## Assignment 1 (basics)")
-    link(title="[GitHub]", url="https://github.com/stanford-cs336/assignment1-basics"), link(title="[PDF]", url="https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_spring2026_assignment1_basics.pdf")
+    link(title="GitHub", url="https://github.com/stanford-cs336/assignment1-basics"), link(title="PDF", url="https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_spring2026_assignment1_basics.pdf")
     text("- Implement BPE tokenizer")
     text("- Implement Transformer, cross-entropy loss, AdamW optimizer, training loop")
     text("- Do resource accounting")
     text("- Train on TinyStories and OpenWebText")
-    text("- Leaderboard: minimize OpenWebText perplexity given 45 minutes on a B200 "), link(title="[last year's leaderboard]", url="https://github.com/stanford-cs336/spring2025-assignment1-basics-leaderboard")
+    text("- Leaderboard: minimize OpenWebText perplexity given 45 minutes on a B200 "), link(title="last year's leaderboard", url="https://github.com/stanford-cs336/spring2025-assignment1-basics-leaderboard")
 
     text("High-level principle: everything is about balancing the following:")
     text("- Expressivity (can represent complex dependencies in the data)")
@@ -364,7 +363,7 @@ def systems():
     text("- Systems optimizations: fused kernels, continuous batching")
 
     text("## Assignment 2 (systems)")
-    link(title="[GitHub]", url="https://github.com/stanford-cs336/assignment2-systems"), link(title="[PDF from Spring 2025]", url="https://github.com/stanford-cs336/assignment2-systems/blob/spring2025/cs336_spring2025_assignment2_systems.pdf")
+    link(title="GitHub", url="https://github.com/stanford-cs336/assignment2-systems"), link(title="PDF from Spring 2025", url="https://github.com/stanford-cs336/assignment2-systems/blob/spring2025/cs336_spring2025_assignment2_systems.pdf")
     text("- Implement a fused RMSNorm kernel in Triton")
     text("- Implement distributed data parallel training")
     text("- Implement optimizer state sharding")
@@ -404,7 +403,7 @@ def scaling_laws():
     text("Should be done training this week, should see how well we match the preregistered loss!")
 
     text("## Assignment 3 (scaling laws)")
-    link(title="[GitHub]", url="https://github.com/stanford-cs336/assignment3-scaling"), link(title="[PDF from Spring 2025]", url="https://github.com/stanford-cs336/assignment3-scaling/blob/master/cs336_spring2025_assignment3_scaling.pdf")
+    link(title="GitHub", url="https://github.com/stanford-cs336/assignment3-scaling"), link(title="PDF from Spring 2025", url="https://github.com/stanford-cs336/assignment3-scaling/blob/master/cs336_spring2025_assignment3_scaling.pdf")
     text("- We define a training API (hyperparameters → loss) based on previous runs")
     text("- Submit \"training jobs\" (under a FLOPs budget) and gather data points")
     text("- Fit scaling laws to the data points")
@@ -446,7 +445,7 @@ def data():
     text("- Post-training data: supervised fine-tuning (conversations, agentic traces with tool calling)")
 
     text("## Assignment 4 (data)")
-    link(title="[GitHub]", url="https://github.com/stanford-cs336/assignment4-data"), link(title="[PDF from Spring 2025]", url="https://github.com/stanford-cs336/assignment4-data/blob/spring2025/cs336_spring2025_assignment4_data.pdf")
+    link(title="GitHub", url="https://github.com/stanford-cs336/assignment4-data"), link(title="PDF from Spring 2025", url="https://github.com/stanford-cs336/assignment4-data/blob/spring2025/cs336_spring2025_assignment4_data.pdf")
     text("- Convert Common Crawl HTML to text")
     text("- Train classifiers to filter for quality and harmful content")
     text("- Deduplication using MinHash")
@@ -474,7 +473,7 @@ def alignment():
     text("- Constantly trading off systems efficiency and on-policyness")
 
     text("## Assignment 5 (alignment)")
-    link(title="[GitHub]", url="https://github.com/stanford-cs336/assignment5-alignment"), link(title="[PDF from Spring 2025]", url="https://github.com/stanford-cs336/assignment5-alignment/blob/spring2025/cs336_spring2025_assignment5_alignment.pdf")
+    link(title="GitHub", url="https://github.com/stanford-cs336/assignment5-alignment"), link(title="PDF from Spring 2025", url="https://github.com/stanford-cs336/assignment5-alignment/blob/spring2025/cs336_spring2025_assignment5_alignment.pdf")
     text("- Implement Direct Preference Optimization (DPO)")
     text("- Implement Group Relative Preference Optimization (GRPO)")
 
@@ -612,7 +611,7 @@ def tokenization_examples():
     text("One could increase compression ratio by increasing **vocabulary size** (number of possible token values increases), leading to sparsity.")
     vocabulary_size = tokenizer.n_vocab  # @inspect vocabulary_size
 
-    text("Let's take a look at the actual vocabulary: "), named_link("var/gpt5_tokenizer_vocab.txt", name="vocab")
+    text("Let's take a look at the actual vocabulary: "), link(title="vocab", url=get_local_url("var/gpt5_tokenizer_vocab.txt"))
     output_tokenizer(tokenizer, "var/gpt5_tokenizer_vocab.txt")  # @stepover
 
 
@@ -641,7 +640,7 @@ def character_tokenizer():
     reconstructed_string = tokenizer.decode(indices)  # call chr @inspect reconstructed_string @stepover
     assert string == reconstructed_string
 
-    text("There are approximately 150K Unicode characters. "), link(title="[Wikipedia]", url="https://en.wikipedia.org/wiki/List_of_Unicode_characters")
+    text("There are approximately 150K Unicode characters. "), link(title="Wikipedia", url="https://en.wikipedia.org/wiki/List_of_Unicode_characters")
     vocabulary_size = max(indices) + 1  # This is a lower bound @inspect vocabulary_size
     text("Problem 1: this is a very large vocabulary.")
     text("Problem 2: many characters are quite rare (e.g., 🌍), which is inefficient use of the vocabulary.")

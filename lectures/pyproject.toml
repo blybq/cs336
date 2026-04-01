@@ -5,8 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "bs4>=0.0.2",
     "edtrace>=0.1.12",
+    "einops>=0.8.2",
     "tiktoken>=0.12.0",
 ]
 
