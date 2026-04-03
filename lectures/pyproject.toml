@@ -10,11 +10,3 @@ dependencies = [
     "modal>=1.4.1",
     "tiktoken>=0.12.0",
 ]
-
-[tool.uv.workspace]
-members = [
-    "edtrace/backend",
-]
-
-[tool.uv.sources]
-edtrace = { workspace = true, editable = true }

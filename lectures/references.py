@@ -420,3 +420,10 @@ xiaomi_mimo_v2_2026 = url_reference("https://mimo.xiaomi.com/mimo-v2-pro", organ
 mamba_3_2026 = url_reference("https://arxiv.org/abs/2603.15569")
 
 olmix_2026 = url_reference("https://arxiv.org/abs/2602.12237")
+
+nemotron_3_super_2026 = Reference(
+    title="Nemotron 3 Super: Open, Efficient Mixture-of-Experts Hybrid Mamba-Transformer Model for Agentic Reasoning",
+    organization="NVIDIA",
+    url="https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf",
+    date="2026-03-11",
+)
