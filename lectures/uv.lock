@@ -7,12 +7,6 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 
-[manifest]
-members = [
-    "edtrace",
-    "lectures",
-]
-
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
@@ -348,7 +342,7 @@ wheels = [
 [[package]]
 name = "edtrace"
 version = "0.1.14"
-source = { editable = "edtrace/backend" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "numpy" },
@@ -356,14 +350,9 @@ dependencies = [
     { name = "sympy" },
     { name = "torch" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "beautifulsoup4" },
-    { name = "numpy" },
-    { name = "requests" },
-    { name = "sympy" },
-    { name = "torch" },
+sdist = { url = "https://files.pythonhosted.org/packages/2f/43/383bd57bbd8a1e9cc576a7aee7a23d2681545c5e83b42ac6c753131d8116/edtrace-0.1.14.tar.gz", hash = "sha256:99f894fbbe8576a12c1a2184032eb80bc48e9ca94ecbae2bb990b3fbbee31a6b", size = 10004, upload-time = "2026-04-01T03:39:59.18Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ad/ce/eabce39bc19bcb8b579d8928903c101fd987a2f8770f1df7d71795e1a01c/edtrace-0.1.14-py3-none-any.whl", hash = "sha256:0f5136d7345726ec9b9e1249cd5782529ff55d13cb117b7bd492d3d2cdc97f0c", size = 11298, upload-time = "2026-04-01T03:40:00.122Z" },
 ]
 
 [[package]]
@@ -576,7 +565,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "edtrace", editable = "edtrace/backend" },
+    { name = "edtrace", specifier = ">=0.1.12" },
     { name = "einops", specifier = ">=0.8.2" },
     { name = "modal", specifier = ">=1.4.1" },
     { name = "tiktoken", specifier = ">=0.12.0" },
