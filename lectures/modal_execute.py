@@ -35,7 +35,7 @@ image = (
 @app.function(
     image=image,
     #gpu="H100",
-    gpu="B200",
+    gpu="B200:4",
     timeout=600,
 )
 def execute(module: str) -> dict[str, str]:
@@ -45,7 +45,8 @@ def execute(module: str) -> dict[str, str]:
     os.makedirs("var/traces", exist_ok=True)
 
     result = subprocess.run(
-        ["python", "-m", "edtrace.execute", "-m", module],
+        ["python", f"{module}.py"],
+        #["python", "-m", "edtrace.execute", "-m", module],
         #["uv", "run", "nsys", "profile", "-w", "true", "-t", "cuda,ntvx", "python", "-m", "edtrace.execute", "-m", module],
         stderr=subprocess.PIPE,
         text=True,
@@ -63,7 +64,7 @@ def execute(module: str) -> dict[str, str]:
 
 
 @app.local_entrypoint()
-def main(module: str = "lecture_06"):
+def main(module: str = "lecture_07"):
     print(f"Running edtrace.execute on Modal for: {module}")
     files = execute.remote(module)
 
