@@ -427,3 +427,10 @@ nemotron_3_super_2026 = Reference(
     url="https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf",
     date="2026-03-11",
 )
+
+deepseek_v4_2026 = Reference(
+    title="DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence",
+    organization="DeepSeek",
+    url="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/DeepSeek_V4.pdf",
+    date="2026-04",
+)
