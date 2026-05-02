@@ -68,7 +68,7 @@ def landscape():
 
     text("Why **efficiency** matters: training is one-time cost, inference is repeated many times")
     text("- OpenAI processes ~8.6T tokens per day "), article_link("https://www.pymnts.com/artificial-intelligence-2/2025/openai-bests-google-in-race-for-consumer-ai-token-consumption/")
-    text("- For reference, DeepSeek v4 was trained on 32T tokens "), link("https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/DeepSeek_V4.pdf")
+    text("- For reference, DeepSeek v4 was trained on 32T tokens "), link(deepseek_v4_2026)
     
     text("Moreover:")
     text("- Chatbots: most tokens are meant for human consumption (humans are bottleneck)")
@@ -111,7 +111,7 @@ def review_transformer():
     text("Conventions:")
     text("- F = 4 D (MLP up-projects into 4x the model dimension)")
     text("- D = N H (model dimension split across N heads)")
-    text("- N = K*G (for GQA, number of heads split across G groups)")
+    text("- N = K G (for GQA, number of heads split across K groups)")
     text("- S = T (during training, condition on S input tokens to predict T output tokens)")
 
 
