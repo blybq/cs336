@@ -344,7 +344,7 @@ def validity():
     text("- Today: train on the Internet and don't tell people about your data")
 
     text("Route 1: try to infer train-test overlap from model")
-    text("- Exploit exchangeability of data points"), link("https://arxiv.org/pdf/2310.17623")
+    text("- Exploit exchangeability of data points "), link("https://arxiv.org/pdf/2310.17623")
     image("images/contamination-exchangeability.png", width=500)
 
     text("Route 2: encourage reporting norms (e.g., people report confidence intervals)")
@@ -361,7 +361,7 @@ def validity():
 
     text("### Dataset quality")
     text("- Fixed up SWE-Bench to produce SWE-Bench Verified "), post_link("https://openai.com/index/introducing-swe-bench-verified/")
-    text("- Create Platinum versions of benchmarks"), link("https://arxiv.org/abs/2502.03461")
+    text("- Create Platinum versions of benchmarks "), link("https://arxiv.org/abs/2502.03461")
     image("https://pbs.twimg.com/media/GjICXQlWkAAYnDS?format=jpg&name=4096x4096", width=700)
     image("https://pbs.twimg.com/media/GjICcGQXYAAM4o1?format=jpg&name=4096x4096", width=800)
     text("- Problems with agentic benchmarks: insufficient test cases, trivial agent can solve task "), link("https://arxiv.org/abs/2507.02825")
