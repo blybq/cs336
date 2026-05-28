@@ -64,7 +64,7 @@ def clip():
     text("- Searched for 500K queries, get ~20K (image, text) pairs per query")
     text("- Trained on 400M image-text pairs")
     text("- Didn't release the dataset")
-    text("- Reproduced in OpenCLIP (using LAION-5B dataset, which used CLIP for filtering)"), link("https://arxiv.org/abs/2212.07143")
+    text("- Reproduced in OpenCLIP (using LAION-5B dataset, which used CLIP for filtering) "), link("https://arxiv.org/abs/2212.07143")
 
     text("Data processing "), link(title="code", url="https://github.com/openai/CLIP/blob/main/clip/clip.py#L79")
     text("- Images come in all resolutions (arbitrary W x H)")
