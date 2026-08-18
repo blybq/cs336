@@ -393,18 +393,18 @@ what_is_good()
 
 也许一个模型如果能在基准测试上表现良好，它就是好的……
 [Artificial Analysis](https://artificialanalysis.ai/)
-<img src="images/artificial-analysis.png" width="800" />
+![](images/artificial-analysis.png)
 
 也许一个模型如果能在基准测试上表现良好且运行便宜，它就是好的……
-<img src="images/artificial-analysis-cost.png" width="800" />
+![](images/artificial-analysis-cost.png)
 
 也许一个模型如果人们更喜欢它的回复，它就是好的……
 [Arena AI (formerly Chatbot Arena)](https://arena.ai/leaderboard)
-<img src="images/lmarena-leaderboard.png" width="400" />
+![](images/lmarena-leaderboard.png)
 
 也许一个模型如果人们仅仅选择使用（并付费）它，它就是好的……
 [OpenRouter](https://openrouter.ai/rankings)
-<img src="images/openrouter.png" width="600" />
+![](images/openrouter.png)
 
 ## 困惑度 (Perplexity)
 
@@ -429,7 +429,7 @@ One Billion Word Benchmark 上的纯 CNN+LSTM 模型（困惑度 51.3 → 30.0�
 GPT-2:
 - 在 WebText 上进行训练（40GB 文本，源自 Reddit 上 high karma 链接的网页）
 - 在标准数据集上进行零样本（Zero-shot）评估（**分布外**评估，out-of-distribution evaluation）
-<img src="images/gpt2-perplexity.png" width="800" />
+![](images/gpt2-perplexity.png)
 - 在迁移学习有帮助的小型数据集（PTB）上表现更好，但在大型数据集（1BW）上表现一般。
 
 困惑度即一切（更多的是信仰而非科学）：
@@ -445,9 +445,9 @@ GPT-2:
 
 有些基准测试实际上是伪装的困惑度测试：
 - 完形填空任务（填空）：LAMBADA [https://arxiv.org/abs/1606.06031](https://arxiv.org/abs/1606.06031)
-<img src="images/lambada.png" width="700" />
+![](images/lambada.png)
 - 多选题句子补全：HellaSwag [https://arxiv.org/pdf/1905.07830](https://arxiv.org/pdf/1905.07830)
-<img src="images/hellaswag.png" width="500" />
+![](images/hellaswag.png)
 
 **警告**（如果你正在运营一个困惑度排行榜）：
 - 用户提交 `LM`，你计算 `log_prob = LM(test_data)`
@@ -473,7 +473,7 @@ exam_benchmarks()
 - “由研究生和本科生从网上免费获取的资源中收集”
 - 尽管名为语言理解，但 MMLU 实际上是关于测试知识，而不是语言理解
 - 在 GPT-3 上使用 Few-shot 提示词进行评估
-<img src="images/mmlu.png" width="700" />
+![](images/mmlu.png)
 [MMLU 排行榜](https://llm-stats.com/benchmarks/mmlu)
 [用于可视化预测的 HELM MMLU](https://crfm.stanford.edu/helm/mmlu/latest/)
 
@@ -482,13 +482,13 @@ exam_benchmarks()
 - 将 4 个选项扩展到了 10 个选项
 - 使用思维链 (Chain of Thought, CoT) 进行评估（给模型更多的思考机会）
 - 模型的准确率下降了 16% 到 33%（没有那么快饱和）
-<img src="images/mmlu-pro.png" width="700" />
+![](images/mmlu-pro.png)
 [MMLU-Pro 排行榜](https://llm-stats.com/benchmarks/mmlu-pro)
 [用于可视化预测的 HELM MMLU-Pro](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/mmlu_pro)
 
 **Graduate-Level Google-Proof Q&A (GPQA)** [https://arxiv.org/abs/2311.12022](https://arxiv.org/abs/2311.12022)
 - 问题由来自 Upwork 的 61 名博士外包撰写
-<img src="images/gpqa.png" width="700" />
+![](images/gpqa.png)
 - 博士专家达到 65% 的准确率
 - 非专家在使用谷歌搜索 30 分钟的情况下达到 34% 的准确率
 - GPT-4 达到 39% 的准确率
@@ -497,11 +497,11 @@ exam_benchmarks()
 
 **Humanity's Last Exam (HLE)** [https://arxiv.org/abs/2501.14249](https://arxiv.org/abs/2501.14249)
 - 2500 个问题：多模态、多学科、多选题 + 简答题
-<img src="images/hle-examples.png" width="700" />
+![](images/hle-examples.png)
 - 给问题创建者提供了 50 万美元的奖金池 + 共同署名权
 - 通过前沿 LLM 过滤，进行多个阶段的审查
-<img src="images/hle-pipeline.png" width="700" />
-<img src="images/hle-results.png" width="600" />
+![](images/hle-pipeline.png)
+![](images/hle-results.png)
 [HLE 排行榜](https://llm-stats.com/benchmarks/hle)
 
 总结：
@@ -529,12 +529,12 @@ chat_benchmarks()
 - 来自互联网的随机用户输入提示词
 - 他们会得到两个随机（匿名）模型的回复
 - 他们评分哪一个更好
-<img src="images/arena-beets.png" width="700" />
+![](images/arena-beets.png)
 基于成对比较计算 ELO 排名：
 - 定义模型：p(A 赢了 B) = 1 / (1 + 10^((ELO_B - ELO_A)/400))
 - 拟合该模型以最大化成对比较的概率
 [Arena AI (formerly Chatbot Arena)](https://arena.ai/leaderboard)
-<img src="images/lmarena-leaderboard.png" width="400" />
+![](images/lmarena-leaderboard.png)
 特性：
 - 真实世界的提示词（对用户免费，有动力去真正使用它）
 - 但这些人是谁？偏见？垃圾邮件发送者？
@@ -550,14 +550,14 @@ chat_benchmarks()
 - Alpaca Eval 2.0 使用回归来消除指标的偏见 [https://arxiv.org/pdf/2404.04475](https://arxiv.org/pdf/2404.04475)
 - 我们如何评估指标本身？
 - 与 Chatbot Arena (人类) 的相关性很高：
-<img src="https://github.com/tatsu-lab/alpaca_eval/raw/main/figures/chat_correlations_no_ae.png" width="500" />
-<img src="images/alpacaeval-leaderboard.png" width="400" />
+![](https://github.com/tatsu-lab/alpaca_eval/raw/main/figures/chat_correlations_no_ae.png)
+![](images/alpacaeval-leaderboard.png)
 
 **WildBench** [https://arxiv.org/pdf/2406.04770](https://arxiv.org/pdf/2406.04770)
 - 从 100 万次人机对话中筛选出 1024 个示例
 - 使用 GPT-4 turbo 作为带有清单（checklist，类似于用于裁判的 CoT）的裁判 + GPT-4 作为裁判
 - 与 Chatbot Arena 强相关（似乎是事实上的合理性检查）
-<img src="images/wildbench.png" width="700" />
+![](images/wildbench.png)
 [HELM WildBench 预测可视化](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/wildbench)
 
 总结：
@@ -583,32 +583,32 @@ agentic_benchmarks()
 - 跨 12 个 Python 仓库的 2294 个任务
 - 给定代码库 + 问题描述，提交一个 PR（拉取请求）
 - 评估指标：单元测试
-<img src="images/swebench.png" width="800" />
+![](images/swebench.png)
 [SWE-Bench Verified 排行榜](https://llm-stats.com/benchmarks/swe-bench-verified)
 
 **TerminalBench** [https://arxiv.org/abs/2601.11868](https://arxiv.org/abs/2601.11868) | [网站](https://www.tbench.ai/)
-<img src="images/terminal-bench.png" width="700" />
+![](images/terminal-bench.png)
 - 计算机终端环境：简单且通用
 - 229 个任务由 93 名贡献者众包完成，其中 89 个任务构成了 Terminal-Bench 2.0
-<img src="images/terminal-bench-human-time.png" width="600" />
-<img src="images/terminal-bench-results.png" width="600" />
+![](images/terminal-bench-human-time.png)
+![](images/terminal-bench-results.png)
 [Terminal-Bench 排行榜](https://llm-stats.com/benchmarks/terminal-bench)
 
 **CyBench** [https://arxiv.org/abs/2408.08926](https://arxiv.org/abs/2408.08926)
-<img src="images/cybench.png" width="700" />
+![](images/cybench.png)
 - 40 个夺旗赛（CTF）任务
 - 使用首次解决时间来衡量难度
-<img src="images/cybench-agent.png" width="700" />
-<img src="images/cybench-results.png" width="600" />
+![](images/cybench-agent.png)
+![](images/cybench-results.png)
 [CyBench 排行榜](https://llm-stats.com/benchmarks/cybench)
 
 **MLEBench** [https://arxiv.org/abs/2410.07095](https://arxiv.org/abs/2410.07095)
 - 75 个 Kaggle 竞赛（需要训练模型、处理数据等）
-<img src="images/mlebench.png" width="800" />
-<img src="images/mlebench-results.png" width="700" />
+![](images/mlebench.png)
+![](images/mlebench-results.png)
 
 智能体脚手架 [post](https://www.philschmid.de/agents-2.0-deep-agents)
-<img src="https://www.philschmid.de/static/blog/agents-2.0-deep-agents/overview.png" width="400" />
+![](https://www.philschmid.de/static/blog/agents-2.0-deep-agents/overview.png)
 - 显式规划：保留一个不断被核对的待办事项列表 (todo list)
 - 分层授权 (Hierarchical delegation)：智能体调用其他子智能体（保持上下文干净）
 - 持久内存：读/写文件
@@ -634,18 +634,18 @@ pure_reasoning_benchmarks()
 - 每个任务都是独特的，因此记忆没有用处。
 
 - ARC-AGI-1 (2019)：第一次迭代
-<img src="https://arcprize.org/media/images/arc-task-grids.jpg" width="800" />
+![](https://arcprize.org/media/images/arc-task-grids.jpg)
 
 - ARC-AGI-2 (2025 年 3 月)：更多多步推理
-<img src="https://arcprize.org/media/images/blog/arc-agi-2-unsolved-1.png" width="800" />
+![](https://arcprize.org/media/images/blog/arc-agi-2-unsolved-1.png)
 
-<img src="images/arc-agi-results.png" width="700" />
+![](images/arc-agi-results.png)
 - 预训练语言模型未能取得突破
 - 推理模型（o1、o3）开始使曲线起飞
 
 - ARC-AGI-3 (2026 年 3 月)：交互式环境 [post](https://arcprize.org/media/ARC_AGI_3_Technical_Report.pdf)
-<img src="images/arc-agi-3.png" width="300" />
-<img src="images/arc-agi-3-results.png" width="500" />
+![](images/arc-agi-3.png)
+![](images/arc-agi-3-results.png)
 
 总结：
 - 目标是将推理与知识解耦（这很难做到！）
@@ -658,7 +658,7 @@ pure_reasoning_benchmarks()
 safety_benchmarks()
 ```
 
-<img src="https://www.team-bhp.com/forum/attachments/road-safety/2173645d1625144681-will-crash-test-rating-change-if-higher-variant-chosen-images-30.jpeg" width="400" />
+![](https://www.team-bhp.com/forum/attachments/road-safety/2173645d1625144681-will-crash-test-rating-change-if-higher-variant-chosen-images-30.jpeg)
 对 AI 来说安全意味着什么？
 
 **HarmBench** [https://arxiv.org/abs/2402.04249](https://arxiv.org/abs/2402.04249)
@@ -669,14 +669,14 @@ safety_benchmarks()
 **AIR-Bench** [https://arxiv.org/abs/2407.17436](https://arxiv.org/abs/2407.17436)
 - 基于监管框架和公司政策
 - 分类为 314 个风险类别，共 5694 个提示词
-<img src="https://crfm.stanford.edu/helm/assets/air-overview-DpBbyagA.png" width="800" />
+![](https://crfm.stanford.edu/helm/assets/air-overview-DpBbyagA.png)
 [HELM AIR-Bench](https://crfm.stanford.edu/helm/air-bench/latest/#/leaderboard)
 
 越狱 (Jailbreaking)：
 - 语言模型经过训练，会拒绝有害的指令
 - 贪婪坐标梯度 (Greedy Coordinate Gradient, GCG) 自动优化提示词以绕过安全限制 [https://arxiv.org/pdf/2307.15043](https://arxiv.org/pdf/2307.15043)
 - 可以从开源权重模型（Llama）迁移到闭源模型（GPT-4）
-<img src="images/gcg-examples.png" width="800" />
+![](images/gcg-examples.png)
 
 什么是安全？
 - 安全的许多方面具有强烈的上下文相关性（政治、法律、社会规范——因国家而异）
@@ -697,18 +697,18 @@ realism()
 **GDPVal** (OpenAI) [https://arxiv.org/pdf/2510.04374](https://arxiv.org/pdf/2510.04374)
 - 涵盖根据美国 GDP 排名前 9 大行业的 44 种职业
 - 任务来自拥有大约 14 年经验的专业人士
-<img src="images/gdpval.png" width="700" />
+![](images/gdpval.png)
 
 **MedHELM** [https://arxiv.org/abs/2505.23802](https://arxiv.org/abs/2505.23802)
 - 以前的医学基准测试主要基于标准化考试
 - 121 个临床任务，来源于 29 位临床医生，混合了私有和公开数据集
-<img src="https://crfm.stanford.edu/helm/assets/medhelm-overview-CND0EIsy.png" width="700" />
+![](https://crfm.stanford.edu/helm/assets/medhelm-overview-CND0EIsy.png)
 [MedHELM](https://crfm.stanford.edu/helm/medhelm/latest/#/leaderboard)
 
 **Clio** (Anthropic) [https://arxiv.org/abs/2412.13678](https://arxiv.org/abs/2412.13678)
 - 使用语言模型来分析真实用户的数据
 - 分享人们正在问什么的通用模式
-<img src="images/clio-table4.png" width="700" />
+![](images/clio-table4.png)
 
 不幸的是，真实性（realism）和隐私（privacy）有时是相互矛盾的。
 
@@ -727,7 +727,7 @@ validity()
 
 路径 1：尝试从模型中推断训练-测试集重叠
 - 利用数据点的可交换性 [https://arxiv.org/pdf/2310.17623](https://arxiv.org/pdf/2310.17623)
-<img src="images/contamination-exchangeability.png" width="500" />
+![](images/contamination-exchangeability.png)
 
 路径 2：鼓励报告规范（例如，报告置信区间）
 - 模型提供商应该报告训练-测试集重叠情况 [https://arxiv.org/abs/2410.08385](https://arxiv.org/abs/2410.08385)
@@ -744,8 +744,8 @@ validity()
 ### 数据集质量 (Dataset quality)
 - 修改了 SWE-Bench 以产出 SWE-Bench Verified [post](https://openai.com/index/introducing-swe-bench-verified/)
 - 创建基准测试的白金（Platinum）版本 [https://arxiv.org/abs/2502.03461](https://arxiv.org/abs/2502.03461)
-<img src="https://pbs.twimg.com/media/GjICXQlWkAAYnDS?format=jpg&name=4096x4096" width="700" />
-<img src="https://pbs.twimg.com/media/GjICcGQXYAAM4o1?format=jpg&name=4096x4096" width="800" />
+![](https://pbs.twimg.com/media/GjICXQlWkAAYnDS?format=jpg&name=4096x4096)
+![](https://pbs.twimg.com/media/GjICcGQXYAAM4o1?format=jpg&name=4096x4096)
 - 智能体基准测试的问题：测试用例不足，平凡的智能体也能解决任务 [https://arxiv.org/abs/2507.02825](https://arxiv.org/abs/2507.02825)
 - Docent：使用 LLM 检查智能体轨迹以检测问题 [post](https://transluce.org/introducing-docent)
 
@@ -768,7 +768,7 @@ how_to_think_about_evaluation()
 
 有一些例外……
 - nanogpt speedrun：固定的数据，计算达到特定验证损失所需的时间
-<img src="images/karpathy-nanogpt-speedrun.png" width="600" /> | [post](https://x.com/karpathy/status/1846790537262571739)
+![](images/karpathy-nanogpt-speedrun.png) | [post](https://x.com/karpathy/status/1846790537262571739)
 
 评估方法鼓励研究人员进行算法创新。
 评估模型/系统对下游用户非常有用。

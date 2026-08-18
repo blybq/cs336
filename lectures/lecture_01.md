@@ -1,6 +1,6 @@
 # CS336: 从头开始构建语言模型 (2026春季)
 
-<img src="images/course-staff.png" width="600" />
+![](images/course-staff.png)
 
 ...为您带来第三次开设的 CS336 课程。
 
@@ -29,21 +29,21 @@
 但还有一个小问题……
 
 ## 语言模型的工业化
-<img src="https://upload.wikimedia.org/wikipedia/commons/c/cc/Industrialisation.jpg" width="400" />
+![](https://upload.wikimedia.org/wikipedia/commons/c/cc/Industrialisation.jpg)
 
 前沿模型的训练成本非常高：
 - **2023年**：据传 GPT-4 的训练成本达 1 亿美元。[Wired 报道](https://www.wired.com/story/openai-ceo-sam-altman-the-age-of-giant-ai-models-is-already-over/)
 - **2025年**：xAI 建造了包含 23 万张 GPU 的集群用于训练 Grok。[Elon Musk 发布的帖子](https://x.com/elonmusk/status/1947701807389515912)
 
 目前没有关于如何构建前沿模型的公开细节。来自 [GPT-4 技术报告](https://arxiv.org/pdf/2303.08774.pdf)：
-<img src="images/gpt4-no-details.png" width="600" />
+![](images/gpt4-no-details.png)
 
 前沿模型对我们来说是遥不可及的。我们可以构建小型语言模型（参数量 < 1B），但这可能无法代表超大型语言模型。
 
 - **例子 1**：随着参数规模变化，注意力（attention）与 MLP 中消耗的 FLOPs 比例也会发生改变。[Stephen Roller 发布的帖子](https://x.com/stephenroller/status/1579993017234382849)
-  <img src="images/roller-flops.png" width="400" />
+  ![](images/roller-flops.png)
 - **例子 2**：行为随参数规模增长的涌现现象。[Emergent Abilities of Large Language Models (Wei et al., 2022)](https://arxiv.org/pdf/2206.07682)
-  <img src="images/wei-emergence-plot.png" width="600" />
+  ![](images/wei-emergence-plot.png)
 
 ## 我们能在这门课中学到哪些可以迁移到前沿模型的知识？
 有三种知识：
@@ -56,7 +56,7 @@
 ## 直觉？ 🤷
 有些设计决策在当时是无法被（理论上）证实的，而仅仅是来自于实验。
 例如：Noam Shazeer 介绍 SwiGLU 的论文 [GLU Variants Improve Transformer (Shazeer, 2020)](https://arxiv.org/pdf/2002.05202.pdf)：
-<img src="images/divine-benevolence.png" width="600" />
+![](images/divine-benevolence.png)
 
 ## 苦涩的教训 (The bitter lesson)
 - **错误的解读**：参数规模决定一切，算法不重要。
@@ -209,7 +209,7 @@ for x in [1, 2, 3]:  # 检查 x 的值
 ### 分词 (Tokenization)
 模型操作的基本原子是什么？
 形式上：分词器在原始输入（字节）与整数序列（Token）之间进行转换。
-<img src="images/tokenized-example.png" width="600" />
+![](images/tokenized-example.png)
 
 流行的分词器：**字节对编码 (Byte-Pair Encoding, BPE)** [Neural Machine Translation of Rare Words with Subword Units (Sennrich et al., 2015)](https://arxiv.org/abs/1508.07909)
 直觉：将输入切分为高频出现的块。
@@ -223,7 +223,7 @@ for x in [1, 2, 3]:  # 检查 x 的值
 
 ### 模型架构 (Model architecture)
 起点：原始 Transformer [Attention Is All You Need (Vaswani et al., 2017)](https://arxiv.org/pdf/1706.03762.pdf)
-<img src="images/transformer-architecture.png" width="500" />
+![](images/transformer-architecture.png)
 
 改进细化：
 - **激活函数**：ReLU, SwiGLU [GLU Variants Improve Transformer (Shazeer, 2020)](https://arxiv.org/pdf/2002.05202.pdf)
@@ -265,14 +265,14 @@ for x in [1, 2, 3]:  # 检查 x 的值
 ### 基础
 - 资源核算：模型的显存与计算特征。
   * 训练 70B 参数模型在 1T Token 上 = $6 \times 70\text{B} \times 1\text{T} = 4.2 \times 10^{23}$ FLOPs。
-  <img src="images/compute-memory.png" width="300" />
+  ![](images/compute-memory.png)
 - 模型参数必须从内存 (HBM) 移动到计算单元 (SMs)。
 - 例如：B200 可以执行 2.25 PFLOP/sec (bf16)，内存带宽为 8TB/sec。
 - 顶线分析 (Roofline analysis)：确定我们是计算受限 (compute-bound) 还是显存受限 (memory-bound)。
 - 基准测试和分析 (nsight)：看实际运行情况。
 
 [DGX B200 系统拓扑](https://docs.nvidia.com/dgx/dgxb200-user-guide/introduction-to-dgxb200.html)：
-<img src="https://docs.nvidia.com/dgx/dgxb200-user-guide/_images/dgx-b200-system-topology.png" width="500" />
+![](https://docs.nvidia.com/dgx/dgxb200-user-guide/_images/dgx-b200-system-topology.png)
 
 ### 算子核 (Kernels)
 - 算子核是在 GPU 上运行的函数。
@@ -296,7 +296,7 @@ for x in [1, 2, 3]:  # 检查 x 的值
 目标：在给定提示（prompt）下生成 Token（实际使用模型时所需！）。
 强化学习、测试时计算（test-time compute）、评估同样需要推理。
 两个阶段：首字生成 (prefill) 和后续生成 (decode)。
-<img src="images/prefill-decode.png" width="500" />
+![](images/prefill-decode.png)
 - Prefill（类似于训练）：Token 已给出，可以一次性处理（计算受限）。
 - Decode：需要一次生成一个 Token（显存受限）。
 加速解码的方法：
@@ -335,13 +335,13 @@ for x in [1, 2, 3]:  # 检查 x 的值
 经典的计算最优扩展定律：[Scaling Laws (Kaplan et al., 2020)](https://arxiv.org/pdf/2001.08361.pdf), [Chinchilla (Hoffmann et al., 2022)](https://arxiv.org/pdf/2203.15556.pdf)
 - 等 FLOPs 曲线 (ISOFLOP curves)：针对多个小型 FLOP 预算，找到最优的 N。
 - 然后拟合扩展定律，外推到大规模 FLOP 预算。
-<img src="images/chinchilla-isoflop.png" width="800" />
+![](images/chinchilla-isoflop.png)
 
 结论：$D = 20 N$ 大致是最优的（例如，70B 参数的模型应当训练在约 1.4T Token 上）。
 注意：这没有考虑推理成本（如果考虑推理成本，我们更希望模型参数量小一些，进行超量训练）。
 
 来自 Marin 的真实案例 [Percy Liang 发布的帖子](https://x.com/percyliang/status/2034367256277533100)
-<img src="https://pbs.twimg.com/media/HDuErvvbsAAQ5Yt?format=jpg&name=4096x4096" width="600" />
+![](https://pbs.twimg.com/media/HDuErvvbsAAQ5Yt?format=jpg&name=4096x4096)
 本周应该能训练完，来看看我们与预注册损失的匹配程度！
 
 ### 作业 3 (扩展定律)
@@ -369,7 +369,7 @@ for x in [1, 2, 3]:  # 检查 x 的值
 ### 数据整理 (Data curation)
 - 数据不会凭空掉下来。
 - 来源：从互联网爬取的网页、书籍、arXiv 论文、GitHub 代码等。
-<img src="https://ar5iv.labs.arxiv.org/html/2101.00027/assets/pile_chart2.png" width="600" />
+![](https://ar5iv.labs.arxiv.org/html/2101.00027/assets/pile_chart2.png)
 - 诉诸合理使用（fair use）来在版权数据上进行训练？[Talkin' 'Bout AI Generation (2023)](https://arxiv.org/pdf/2303.15715.pdf)
 - 可能需要对数据进行授权（例如 Google 与 Reddit 达成的协议）[路透社报道](https://www.reuters.com/technology/reddit-ai-content-licensing-deal-with-google-sources-say-2024-02-22/)
 - 原始数据是 HTML, PDF, 目录（而非纯文本），需要进行处理。

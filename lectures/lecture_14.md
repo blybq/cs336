@@ -460,10 +460,10 @@ HTML 转换为文本（最主要的任务）：
 - 转换过程本质上是有损的（需要将结构化内容线性化）
 - 转换工具（基于规则）：trafilatura、resiliparse、jusText、lynx 等。
 - 提取准确率非常关键：[[DCLM 2024 论文]](https://arxiv.org/abs/2406.11794)
-<img src="images/dclm-wet.png" width="300" />
+![](images/dclm-wet.png)
 
 FinePDFs [post](https://huggingface.co/spaces/HuggingFaceFW/FinePDFsBlog)
-<img src="https://huggingfacefw-finepdfsblog.hf.space/_astro/pdf-description.Cb49jXc6_Z17eX4E.webp" width="600" />
+![](https://huggingfacefw-finepdfsblog.hf.space/_astro/pdf-description.Cb49jXc6_Z17eX4E.webp)
 - 数据来源：Common Crawl
 - 重新爬取截断的 PDF（因为 PDF 文件通常很大）
 - 使用 VLM 或 Docling 进行 OCR（RolmOCR）（并提高它们的运行速度）
@@ -478,7 +478,7 @@ filtering()
 
 算法构建模块：
 - 给定一些**目标数据** T 和大量的**原始数据** R，寻找 R 的子集 T' 使其与 T 相似。
-<img src="images/raw-target-schema.png" width="600" />
+![](images/raw-target-schema.png)
 
 应用场景：
 - 语言识别（英语 vs 其他语言）
@@ -555,7 +555,7 @@ Dolma 中的毒性内容过滤 [[Dolma 2024]](https://arxiv.org/abs/2402.00159)
 - 不存在单一的过滤最佳阈值
 - 如果要训练更长时间，需要更多（较低质量）的数据
 - 如果要缩短训练时间，需要更少（较高质量）的数据
-<img src="images/data-filtering-scale.png" width="800" />
+![](images/data-filtering-scale.png)
 
 总结：
 - 数据过滤对于训练一个优秀模型而言至关重要
@@ -626,10 +626,10 @@ data_mixing()
 语言模型往往是在多个混合的数据源上训练的。
 
 Marin 中的数据集分布：[[Token 统计查看器]](https://huggingface.co/spaces/marin-community/token-count-viewer)
-<img src="images/marin-token-viewer.png" width="800" />
+![](images/marin-token-viewer.png)
 
 The Pile [[论文]](https://arxiv.org/pdf/2101.00027.pdf)
-<img src="https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png" width="600" />
+![](https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png)
 核心问题：我们应当在不同数据源上采用怎样的概率分布进行混合采样？
 
 基线方案：
@@ -649,12 +649,12 @@ UniMax [https://arxiv.org/abs/2304.09151]
 - 具体而言，需满足 p(s) * num_training_tokens ≤ C (对于所有数据源 s)。
 
 基于回归的混合策略 [https://arxiv.org/abs/2407.01492] | [https://arxiv.org/pdf/2602.12237]
-<img src="images/regmix.png" width="700" />
+![](images/regmix.png)
 - 定义关于混合比例 `p` 的分布（例如狄利克雷分布, Dirichlet）
 - 定义回归方法（如线性回归、梯度提升树）
 - 基于下游评估设定目标函数（注意防止测试集泄露和过拟合！）
 - 考量小规模训练与大规模训练之间的差异（权衡训练成本与最终准确率）
-<img src="images/data-mixing-methods.png" width="700" />
+![](images/data-mixing-methods.png)
 - 期望 1：回归模型在极小值点处是准确的
 - 期望 2：最优的混合比例在小规模和大规模之间可以良好地外推/迁移
 
@@ -680,15 +680,15 @@ post_training_data()
 OpenThoughts [https://arxiv.org/abs/2506.04178]
 - 使用 QwQ-32B 作为教师生成了 120 万个样本
 - 问题源自 27 个真实和合成数据源（例如 StackExchange, NuminaMath, 化学等）
-<img src="images/openthoughts-sources.png" width="500" />
+![](images/openthoughts-sources.png)
 - 针对每个提示词进行多次采样（如 16 次回复）能提供更好的数据质量
 - 能力更强的模型不一定就是更好的“教师模型”：例如，QwQ-32B 生成用于训练的 CoT 轨迹效果好于 DeepSeek-R1
 - 简单的过滤答案机制没有带来显著帮助
 - 小规模、高针对性的高质量源（如 OpenMath-2-Math）效果好于大规模的杂乱多样化数据源
-<img src="images/openthoughts-pipeline.png" width="600" />
+![](images/openthoughts-pipeline.png)
 
 SWE-smith [https://arxiv.org/abs/2504.21798]
-<img src="images/swe-smith.png" width="500" />
+![](images/swe-smith.png)
 - 给定一个代码仓库，利用大模型自动注入 Bug 以生成相关的开发/修复任务
 - 128 个 GitHub 仓库产出了 5 万个任务
 
@@ -696,21 +696,21 @@ SWE-Zero [https://arxiv.org/abs/2604.01496]
 - 软件开发（SWE）任务往往有非常复杂的环境依赖（不同于独立的数学或算法竞赛题）
 - 为成千上万个任务构建对应的 Docker 镜像是极其繁重的工程灾难
 - 关键发现：足够强大的模型可以在不进行代码执行与反馈的情况下，直接解决许多软件工程任务
-<img src="images/swezero-noexec.png" width="600" />
+![](images/swezero-noexec.png)
 核心：强大的模型在内部建立了关于代码语义的“世界模型”
 - SWE-Zero：产生了 30 万条不需要针对特定仓库运行代码执行反馈的智能体轨迹
 - 来自 15 万个真实的 GitHub PRs
 - 采用 OpenHands 智能体脚手架，并在轨迹中删除了未来的 Git commit 信息以防智能体投机取巧
-<img src="images/swezero-prompt.png" width="600" />
+![](images/swezero-prompt.png)
 - 从 Qwen3-Coder-480B 蒸馏并做后续过滤
 - SWE-Hero：包含 1.3 万条需要代码执行与反馈的智能体轨迹
-<img src="images/swezero-results.png" width="700" />
+![](images/swezero-results.png)
 
 SWE-rebench [https://arxiv.org/pdf/2505.20411]
 - 包含源自 3400 个 GitHub 仓库的 2.1 万个交互式 Python 软件工程任务
 - 从 GitHub 和 GitHub Archive 中收集了 45 万个 PRs
 - 使用 Qwen 2.5-72B-Instruct 自动配置依赖环境并对 PR 质量进行评估分档
-<img src="images/swe-rebench.png" width="600" />
+![](images/swe-rebench.png)
 
 SWE-ZERO-12M-trajectories [[HuggingFace 数据集]](https://huggingface.co/datasets/AlienKevin/SWE-ZERO-12M-trajectories)
 - 将 SWE-Zero 的规模扩大到了 1200 万条智能体运行轨迹

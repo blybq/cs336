@@ -25,7 +25,7 @@ from lecture_util import article_link
 
 本讲主题：跨多块 GPU 和多计算节点的分布式并行训练。
 
-<img src="images/gpu-node-overview.png" width="700" />
+![](images/gpu-node-overview.png)
 
 在这两种情况下，核心的**计算单元** (ALU / Tensor Core) 距离**数据源** (显存/内存) 都显得相当遥远。
 
@@ -145,7 +145,7 @@ def render_duration(duration: float) -> str:
 
 **分布式设置**：
 
-<img src="images/ranks.png" width="500" />
+![](images/ranks.png)
 
 - **Rank**：标识特定的 GPU 设备编号（例如 0, 1, 2, 3 等）
 
@@ -285,7 +285,7 @@ rank3 = tensor([3, 7, 11, 15])
 
 经典拓扑（家用/个人工作站环境）：
 
-<img src="https://media.springernature.com/lw685/springer-static/image/art%3A10.1186%2Fs42774-021-00098-3/MediaObjects/42774_2021_98_Fig1_HTML.png?as=webp" width="500" />
+![](https://media.springernature.com/lw685/springer-static/image/art%3A10.1186%2Fs42774-021-00098-3/MediaObjects/42774_2021_98_Fig1_HTML.png?as=webp)
 
 - 同节点内的多张 GPU 通过 PCI(e) 总线完成通信（PCIe 7.0 x16 单向带宽可达 242 GB/s）。 [相关文章](https://en.wikipedia.org/wiki/PCI_Express)
 
@@ -293,7 +293,7 @@ rank3 = tensor([3, 7, 11, 15])
 
 现代拓扑（数据中心高性能集群环境）：
 
-<img src="images/gpu-node-overview.png" width="700" />
+![](images/gpu-node-overview.png)
 
 典型多卡网络架构设计：
 
@@ -367,7 +367,7 @@ else:
 
 这极具代表性，因为 MLP 是 Transformer 模型中最主要的计算开销之一。
 
-<img src="images/data-parallelism.png" width="300" />
+![](images/data-parallelism.png)
 
 切分策略：数据切片分布在各卡上，各卡模型与参数完全一致。
 
@@ -385,7 +385,7 @@ data = generate_sample_data()
 
 下节预告：FSDP/ZeRO 并行，使用 All-Gather 和 Reduce-Scatter 消除重复持有完整模型参数的显存开销。
 
-<img src="images/tensor-parallelism.png" width="300" />
+![](images/tensor-parallelism.png)
 
 切分策略：每一层的参数矩阵被按维度切分到不同的卡上，每次计算时需要卡间通信同步激活值。
 
@@ -393,7 +393,7 @@ data = generate_sample_data()
 data = generate_sample_data()
 ```
 
-<img src="images/pipeline-parallelism.png" width="300" />
+![](images/pipeline-parallelism.png)
 
 切分策略：将网络深度层均匀分发到不同的 GPU 上，顺次执行前向与反向传输。
 

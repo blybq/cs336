@@ -593,7 +593,7 @@ motivation()
 开源权重模型（例如 Llama 3 [[Llama 3 论文]](https://arxiv.org/abs/2407.21783)）在架构上具有完全透明性
 ……甚至在训练程序上也是如此
 ……但在数据上基本上没有任何信息。
-<img src="images/llama3-data.png" width="700" />
+![](images/llama3-data.png)
 
 保密的原因：
 1. 竞争态势
@@ -619,11 +619,11 @@ motivation()
 
 示例（来自 AI2 的 OLMo） [[OLMo 2 论文]](https://arxiv.org/abs/2501.00656)
 1. **预训练 (Pre-training)**
-<img src="images/olmo2-pretraining.png" width="600" />
+![](images/olmo2-pretraining.png)
 2. **中期训练 (Mid-training)**
-<img src="images/olmo2-dolmino.png" width="600" />
+![](images/olmo2-dolmino.png)
 3. **后期训练 (Post-training)** [https://arxiv.org/pdf/2411.15124](https://arxiv.org/pdf/2411.15124)
-<img src="images/tulu.png" width="600" />
+![](images/tulu.png)
 
 这些数据集是什么？它们是如何被选择和处理的？
 
@@ -673,10 +673,10 @@ copyright()
 同意意愿的下降 [https://arxiv.org/abs/2407.14933](https://arxiv.org/abs/2407.14933)
 - 检查了通用数据集（C4, RefinedWeb, Dolma）中的 URL 限制情况 (robots.txt, ToS)
 - 随着时间的推移，限制正在增加
-<img src="images/decline-consent.png" width="700" />
+![](images/decline-consent.png)
 
 当爬虫行为不规整时：
-<img src="images/anthropic-crawling.png" width="500" />
+![](images/anthropic-crawling.png)
 - 因素：ToS、robots.txt、服务器负载（这会降低服务质量，增加网站成本）
 - 然后还有版权问题（稍后详述）……
 
@@ -810,7 +810,7 @@ arxiv()
 - [2026 年 4 月的爬网数据](https://commoncrawl.org/blog/april-2026-crawl-archive-now-available) 拥有 21.9 亿个页面 (372.2 TB)
 
 网页爬取使用 Apache Nutch [[Common Crawl 官方博客]](https://blog.commoncrawl.org/blog/common-crawl-move-to-nutch)
-<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/WebCrawlerArchitecture.svg/330px-WebCrawlerArchitecture.svg.png" width="400" />
+![](https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/WebCrawlerArchitecture.svg/330px-WebCrawlerArchitecture.svg.png)
 - 从一个种子 URL 集合（至少几亿个）开始 [[2018年3月爬虫归档博客]](https://commoncrawl.org/blog/march-2018-crawl-archive-now-available)
 - 从队列中取出一个 URL，下载其内容，并将页面中的超链接加入队列
 
@@ -827,7 +827,7 @@ arxiv()
 HTML 提取文本：
 - 用于将 HTML 转换为文本的工具：[trafilatura](https://trafilatura.readthedocs.io/en/latest/)、[resiliparse](https://resiliparse.chatnoir.eu/en/stable/)
 - HTML 提取文本转换的质量显著影响语言模型在下游任务上的准确率：[[DCLM 2024]](https://arxiv.org/abs/2406.11794)
-<img src="images/dclm-wet.png" width="300" />
+![](images/dclm-wet.png)
 
 ---
 
@@ -970,7 +970,7 @@ Colossal Clean Crawled corpus (C4) [https://arxiv.org/pdf/1910.10683v4](https://
 最终结果：806 GB 的文本 (1560 亿 token)
 
 C4 数据集分析 [https://arxiv.org/pdf/2104.08758](https://arxiv.org/pdf/2104.08758)
-<img src="https://stanford-cs324.github.io/winter2022/lectures/images/c4-domains.png" width="700" />
+![](https://stanford-cs324.github.io/winter2022/lectures/images/c4-domains.png)
 
 彩蛋：类 WebText 数据集
 - 过滤到源自 OpenWebText 链接的页面（Reddit 得分 >= 3 的链接）
@@ -998,7 +998,7 @@ The Pile [[论文]](https://arxiv.org/pdf/2101.00027.pdf)
 - 作为对 GPT-3 闭源的反应，是生产开源语言模型努力的一部分
 - 一个由大量志愿者在 Discord 上贡献/协调的草根项目
 - 策划了 22 个高质量的数据领域
-<img src="https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png" width="600" />
+![](https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png)
 
 - 825 GB 文本 (约 2750 亿 token)
 - Pile-CC：Common Crawl，使用 WARC，用 jusText 将其转换为文本（比 WET 格式转换质量更好）
@@ -1085,7 +1085,7 @@ FineWeb [https://huggingface.co/datasets/HuggingFaceFW/fineweb]
 ---
 
 Dolma [https://arxiv.org/pdf/2402.00159](https://arxiv.org/pdf/2402.00159)
-<img src="https://miro.medium.com/v2/resize:fit:1400/1*-0Qqhvu7JD6Y9JgsfKJdxw.png" width="700" />
+![](https://miro.medium.com/v2/resize:fit:1400/1*-0Qqhvu7JD6Y9JgsfKJdxw.png)
 
 - Reddit：来自 Pushshift 项目（2005-2023），分别包含发帖和评论
 - PeS2o：来自 Semantic Scholar 的 4000 万篇学术论文
@@ -1105,7 +1105,7 @@ DataComp-LM [[DCLM 2024]](https://arxiv.org/abs/2406.11794)
 - 目标：定义一个标准的数据集平台，用以尝试和对比不同的数据清洗算法
 - 处理 CommonCrawl 以生成 DCLM-pool (240 万亿 token)
 - DCLM-baseline：通过质量分类器自 DCLM-pool 中过滤下来的子集
-<img src="images/dclm-filter.png" width="800" />
+![](images/dclm-filter.png)
 
 ### 基于模型的过滤 (Model-based filtering)
 正样本（20 万）：
@@ -1117,7 +1117,7 @@ DataComp-LM [[DCLM 2024]](https://arxiv.org/abs/2406.11794)
 
 训练了一个 fastText 分类器，在整个 DCLM-pool 上运行
 这种质量分类器优于其他过滤方法：
-<img src="images/dclm-quality.png" width="600" />
+![](images/dclm-quality.png)
 
 ---
 
@@ -1136,7 +1136,7 @@ Nemotron-CC [[Nemotron-CC 2024]](https://arxiv.org/abs/2412.02595)
 
 最终规模：6.3万亿 token（高质量子集为 1.1万亿）
 作为参考：Llama 3 在 15T 数据上训练，Qwen3 在 36T 上训练
-<img src="images/nemotron-results.png" width="800" />
+![](images/nemotron-results.png)
 
 ---
 
@@ -1158,7 +1158,7 @@ Stack v2 [https://arxiv.org/abs/2402.19173](https://arxiv.org/abs/2402.19173)
 拉取请求 (PR)：
 - 将结构化对象线性化为 token 序列
 - 增加一些内联上下文（例如围绕 diff 的文件），并进行下采样
-<img src="images/stackv2-pr1.png" width="250" /> <img src="images/stackv2-pr2.png" width="400" />
+![](images/stackv2-pr1.png) ![](images/stackv2-pr2.png)
 
 ---
 
@@ -1170,7 +1170,7 @@ Stack v2 [https://arxiv.org/abs/2402.19173](https://arxiv.org/abs/2402.19173)
 核心问题：仅使用宽松授权的数据，能否训练出优秀的模型？
 
 CommonPile [https://arxiv.org/pdf/2506.05209](https://arxiv.org/pdf/2506.05209)
-<img src="images/commonpile.png" width="700" />
+![](images/commonpile.png)
 - 收集了 8TB 的拥有宽松授权协议的数据集
 
 微妙之处：
@@ -1178,7 +1178,7 @@ CommonPile [https://arxiv.org/pdf/2506.05209](https://arxiv.org/pdf/2506.05209)
 - 数据集许可证（Dolma 采用 ODC-By）并不延伸到单个底层文件
 - 源自无许可证数据训练而来的 LM 所生成的合成数据，其授权界限目前并不明朗
 
-<img src="images/comma-results.png" width="700" />
+![](images/comma-results.png)
 - 表现得还行，但在缺乏足够 token 的情况下很难与其他模型竞争
 
 ## 总结 (Summary)

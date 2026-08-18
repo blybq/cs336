@@ -29,7 +29,7 @@ from references import deepseek_v3_2_2025, adagrad_2011, nemotron_3_super_2026
 
 Marin $10^{23}$ FLOPs 的模型预训练已顺利完成，并且[非常完美地符合我们的预测损失](https://x.com/WilliamBarrHeld/status/2039373983632814318)！
 
-<img src="https://pbs.twimg.com/media/HE1P1HmaUAAjLXF?format=jpg&name=medium" width="800" />
+![](https://pbs.twimg.com/media/HE1P1HmaUAAjLXF?format=jpg&name=medium)
 
 上一讲内容回顾：课程概述与分词 (Tokenization)。
 
@@ -265,7 +265,7 @@ x = torch.zeros(B, S, H, D)
 
 [Wikipedia](https://en.wikipedia.org/wiki/Single-precision_floating-point_format)
 
-<img src="images/fp32.png" width="700" />
+![](images/fp32.png)
 
 fp32 数据类型（也称为 float32 或单精度）是默认的格式。
 
@@ -295,7 +295,7 @@ assert get_memory_usage(torch.empty(12288 * 4, 12288)) == 2304 * 1024 * 1024  # 
 
 [Wikipedia](https://en.wikipedia.org/wiki/Half-precision_floating-point_format)
 
-<img src="images/fp16.png" width="400" />
+![](images/fp16.png)
 
 fp16 数据类型（也称为 float16 或半精度）可以将内存减半。
 
@@ -317,7 +317,7 @@ assert x == 0  # 数值下溢！
 
 [Wikipedia](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format)
 
-<img src="images/bf16.png" width="400" />
+![](images/bf16.png)
 
 Google Brain 研发的 bfloat16 格式，每个数值占用 2 字节。它具有与 fp32 相同的动态范围，但尾数精度较低。在大型模型训练中，bf16 可以免去 fp16 易发生下溢的梯度缩放操作。
 
@@ -357,7 +357,7 @@ with torch.amp.autocast("cuda", dtype=torch.bfloat16):
 
 2022年，受机器学习工作负载的推动，fp8 得到了标准化。
 
-<img src="https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/_images/fp8_formats.png" width="600" />
+![](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/_images/fp8_formats.png)
 
 H100 GPU 支持两种 FP8 变体：E4M3（动态范围 [-448, 448]）和 E5M2（动态范围 [-57344, 57344]）。
 
@@ -386,7 +386,7 @@ assert x.device == torch.device("cpu")
 
 然而，对于 GPU 呢？
 
-<img src="images/cpu-gpu.png" width="600" />
+![](images/cpu-gpu.png)
 
 ```python
 device = cuda_if_available()
@@ -593,7 +593,7 @@ mfu = actual_flop_per_sec / promised_flop_per_sec if promised_flop_per_sec else 
 
 为了回答这个问题，我们需要更深入地了解数据是如何在 GPU 的硬件层面上流转和计算的……
 
-<img src="images/compute-memory.png" width="300" />
+![](images/compute-memory.png)
 
 硬件执行一次计算的基本步骤：
 
@@ -737,7 +737,7 @@ assert arithmetic_intensity > h100_accelerator_intensity
 
 我们可以利用 Roofline 模型（屋顶图）非常直观地展现算法算术强度与硬件实际性能之间的关系。
 
-<img src="https://jax-ml.github.io/scaling-book/assets/img/roofline-improved-1400.webp" width="600" />
+![](https://jax-ml.github.io/scaling-book/assets/img/roofline-improved-1400.webp)
 
 - 横坐标 $x$ 代表算法的算术强度（每字节传输对应的计算次数）
 
@@ -751,7 +751,7 @@ MFU = min(1, arithmetic-intensity / accelerator-intensity)
 
 [reference](https://jax-ml.github.io/scaling-book/roofline/)
 
-<img src="images/deep-network.png" width="800" />
+![](images/deep-network.png)
 
 考查一个具有 $L$ 层，且输入、输出及中间激活值均为 $D$ 维的深度 MLP 网络模型。
 
@@ -819,7 +819,7 @@ assert torch.equal(w.grad, torch.tensor([1, 2, 3]))
 
 接下来，我们来精确计算求解梯度所需的 FLOPs 开销。
 
-<img src="images/deep-network.png" width="800" />
+![](images/deep-network.png)
 
 ```python
 B = 1024  # 样本数量
@@ -1110,7 +1110,7 @@ activation_memory = 2 * micro_batch_size * D * L  # (2 bytes for bf16)
 
 而在模型推理时不需要求解梯度，因而前向之后可以直接释放前面的激活值，仅保留当前层级的信息即可。
 
-<img src="images/deep-network.png" width="800" />
+![](images/deep-network.png)
 
 此时的显存开销对比：
 
