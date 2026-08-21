@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Per-process proxy for the Codex WSL app-server.
+# Override without editing this file:
+#   CODEX_WSL_PROXY_URL=http://127.0.0.1:7897
+proxy_url="${CODEX_WSL_PROXY_URL:-http://127.0.0.1:7897}"
+
+export HTTP_PROXY="$proxy_url"
+export HTTPS_PROXY="$proxy_url"
+export http_proxy="$proxy_url"
+export https_proxy="$proxy_url"
+export NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1}"
+export no_proxy="$NO_PROXY"
+
+# Prevent a stale SOCKS setting from taking precedence over Clash's HTTP/mixed port.
+unset ALL_PROXY all_proxy
+
+find_bundled_codex() {
+    local candidate
+    local newest=""
+
+    for candidate in /mnt/c/Users/12391/.codex/bin/wsl/*/codex; do
+        if [[ -x "$candidate" && ( -z "$newest" || "$candidate" -nt "$newest" ) ]]; then
+            newest="$candidate"
+        fi
+    done
+
+    if [[ -n "$newest" ]]; then
+        printf '%s\n' "$newest"
+        return 0
+    fi
+
+    return 1
+}
+
+if [[ -n "${CODEX_REAL_CLI:-}" ]]; then
+    real_codex="$CODEX_REAL_CLI"
+elif real_codex="$(find_bundled_codex 2>/dev/null)"; then
+    :
+else
+    real_codex="/home/blybq/.codex/packages/standalone/current/bin/codex"
+fi
+
+if [[ "${CODEX_WSL_PROXY_DRY_RUN:-0}" == "1" ]]; then
+    printf 'proxy=%s\nreal_codex=%s\n' "$proxy_url" "$real_codex"
+    exit 0
+fi
+
+if [[ ! -x "$real_codex" ]]; then
+    printf 'codex-wsl-proxy: executable not found: %s\n' "$real_codex" >&2
+    exit 127
+fi
+
+exec "$real_codex" "$@"

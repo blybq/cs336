@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel adaptiveColors="auto" page="1" pageScale="1" pageWidth="827" pageHeight="1169">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="2" value="&#32447;&#31243;&#32423; (CUDA C++) &#19982;&#29926;&#29255;&#32423; (Triton) &#32534;&#31243;&#33539;&#24335;&#23545;&#27604;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="40" y="15" width="450" height="25" as="geometry"/>
+    </mxCell>
+    <mxCell id="3" value="Thread-Level &#32534;&#31243; (CUDA C++)&lt;br&gt;&lt;br&gt;&#8226; &#32534;&#31243;&#23545;&#35937;&#26159;&#21333;&#20010; Thread&#65292;&#25191;&#34892;&#26631;&#37327;&#32423;&#25351;&#20196;&lt;br&gt;&#8226; &#25163;&#21160;&#35745;&#31639;&#32447;&#31243;&#22352;&#26631;: threadIdx.x + blockIdx.x * blockDim.x&lt;br&gt;&#8226; &#25163;&#21160;&#31649;&#29702;&#32447;&#31243;&#21516;&#27493;&#12289;&#26174;&#23384;&#23545;&#40784;&#19982; Shared Memory &#25644;&#36816;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8D7DA;strokeColor=#F5C6CB;fontColor=#721C24;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="40" y="50" width="300" height="140" as="geometry"/>
+    </mxCell>
+    <mxCell id="4" value="VS" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="350" y="105" width="30" height="25" as="geometry"/>
+    </mxCell>
+    <mxCell id="5" value="Tile-Level &#32534;&#31243; (Triton)&lt;br&gt;&lt;br&gt;&#8226; &#32534;&#31243;&#23545;&#35937;&#26159;&#19968;&#22359;&#22810;&#32500;&#25968;&#32452; (Tiles/Blocks)&#65292;&#25191;&#34892;&#21521;&#37327;&#25351;&#20196;&lt;br&gt;&#8226; tl.load(ptr + offsets) &#19968;&#27425;&#24615;&#21152;&#36733;&#25972;&#20010; Tile &#21040; SRAM&lt;br&gt;&#8226; Triton &#32534;&#35793;&#22120;&#22312;&#21518;&#21488;&#23558; Tile &#33258;&#21160;&#20999;&#20998;&#24182;&#35843;&#24230;&#32473; Warp" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D4EDDA;strokeColor=#C3E6CB;fontColor=#155724;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="390" y="50" width="300" height="140" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>

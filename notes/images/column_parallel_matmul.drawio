@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel adaptiveColors="auto" page="1" pageScale="1" pageWidth="827" pageHeight="1169">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="2" value="&#21015;&#24182;&#34892; (Column Parallel) &#30697;&#38453;&#20056;&#27861;&#20999;&#20998;&#21407;&#29702; (Megatron-LM)" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="40" y="15" width="450" height="25" as="geometry"/>
+    </mxCell>
+    <mxCell id="3" value="&#36755;&#20837; X&lt;br&gt;(&#23436;&#25972;&#22797;&#21046;/&#24191;&#25773;)&lt;br&gt;1 x d_in" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#E2E3E5;fontColor=#6C757D;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="40" y="70" width="110" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="4" value="&#215;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="160" y="90" width="20" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="5" value="&#26435;&#37325; W_1&lt;br&gt;(&#25353;&#21015;&#20999;&#20998;)&lt;br&gt;GPU 0&lt;br&gt;d_in x (d_out/2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D4EDDA;strokeColor=#C3E6CB;fontColor=#155724;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="190" y="70" width="110" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="6" value="&#26435;&#37325; W_2&lt;br&gt;(&#25353;&#21015;&#20999;&#20998;)&lt;br&gt;GPU 1&lt;br&gt;d_in x (d_out/2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#CCE5FF;strokeColor=#B8DAFF;fontColor=#004085;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="310" y="70" width="110" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="7" value="&#65309;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="430" y="90" width="20" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="8" value="&#36755;&#20986; Y_1&lt;br&gt;GPU 0 &#26412;&#22320;&lt;br&gt;1 x (d_out/2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D4EDDA;strokeColor=#C3E6CB;fontColor=#155724;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="460" y="70" width="110" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="9" value="&#36755;&#20986; Y_2&lt;br&gt;GPU 1 &#26412;&#22320;&lt;br&gt;1 x (d_out/2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#CCE5FF;strokeColor=#B8DAFF;fontColor=#004085;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="580" y="70" width="110" height="60" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>
