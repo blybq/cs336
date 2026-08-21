@@ -1172,7 +1172,7 @@ checkpointed_memory = get_max_memory_usage(lambda: model(x).sum().backward())
 
 - **Einops** 库提供了一种更健壮、不易出错且更清晰的张量维度管理和变换方式。
 
-- 每次梯度更新需要执行大约 **$6 	imes N 	imes D$** 次浮点运算（FLOPs）。
+- 每次梯度更新需要执行大约 **$6 \times N \times D$** 次浮点运算（FLOPs）。
 
 - 通过**算术强度与 Roofline 拓扑分析**，我们可以判断硬件当前的运行状态究竟是受限于显存带宽还是计算算力。
 

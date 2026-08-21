@@ -505,6 +505,13 @@ qwen3_vl()
 - 预训练包含 4 个阶段（先训练适配器，然后在 8K、32K、256K 序列长度上训练所有参数）
 ![](images/qwen3-vl-pretraining.png)
 - 后期训练：在长 CoT 数据上进行 SFT、知识蒸馏和强化学习 RL
+![](images/qwen3-vl-results.png)
+
+总结：
+- SOTA 性能
+- 大量数据工程工作，但细节不多
+- 细微但可能非常重要的架构改进
+- 规模扩大 (Scale up)
 
 ## 迈向全能 (Towards Omni Models - Chameleon)
 

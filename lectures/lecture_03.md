@@ -146,6 +146,37 @@
 * **最近的模型**：Grok, Gemma 2。Olmo 2 仅执行非残差后归一化。
 
 ---
+### 💡 核心机制沉淀：Pre-norm 与 Post-norm 的拓扑结构、梯度传播与演进
+
+#### 1. 概念澄清：归一化层在残差结构中的具体位置
+在传统单层前馈网络（如经典 CNN/MLP）中，归一化常置于激活函数前（`Linear -> BatchNorm -> ReLU`）。
+但在 **Transformer 残差架构** 中，**前归一化 (Pre-LN)** 与 **后归一化 (Post-LN)** 的核心区别在于 **归一化层与残差加法分支的相对拓扑位置**：
+
+| 架构类型 | 数学公式 | 归一化层位置 | 残差主干道（Residual Stream）状态 |
+| :--- | :--- | :--- | :--- |
+| **后归一化 (Post-LN)**<br>*(原始 Transformer, BERT)* | $$x_{l+1} = \text{Norm}(x_l + F(x_l))$$ | **残差相加之后** | **残差流被 Norm 截断污染**，主干信号必须逐层经过 Norm |
+| **前归一化 (Pre-LN)**<br>*(GPT-2/3/4, LLaMA, 现代主流)* | $$x_{l+1} = x_l + F(\text{Norm}(x_l))$$ | **子模块计算之前（仅在分支内）** | **残差流保持纯净（Clean Residual）**，主干道是直通恒等连接 |
+
+> 📌 **核心辨析**：Pre-LN 不是在子层内部的激活函数前加 Norm，而是在进入整个 Attention 或 FFN 子层前对残差输入做一次 Norm，计算完毕后直接加回残差流，**残差主干道上无任何算子阻挡**。
+
+#### 2. 为什么现代大模型普遍选择 Pre-LN？
+核心原因在于**深层网络的训练稳定性与梯度反向传播机制**：
+- **无损梯度高速公路（Clean Gradient Flow）**：
+  - Pre-LN 输出展开为 $x_L = x_0 + \sum_{l=0}^{L-1} F(\text{Norm}(x_l))$，损失对浅层输入的导数包含恒等矩阵项 $\mathbf{I}$：
+    $$\frac{\partial x_L}{\partial x_0} = \mathbf{I} + \sum_{l=0}^{L-1} \frac{\partial F(\text{Norm}(x_l))}{\partial x_0}$$
+    深层损失信号可无衰减直通回传至底层，彻底杜绝梯度弥散。
+  - Post-LN 反向传播每一层必须连乘 $\frac{\partial \text{Norm}}{\partial x}$，浅层梯度呈指数级衰减，且初始化时顶层极易发生严重的梯度尖峰（Gradient Spikes）。
+- **对超参数与深度的鲁棒性**：
+  - Post-LN 训练非常脆弱，极度依赖漫长精细的学习率预热（Warmup），难以拓展至深层（如上百层）；
+  - Pre-LN 极大地降低了对 Warmup 的依赖，允许使用更大更激进的学习率，支撑了千亿甚至万亿参数超深大模型的稳定收敛。
+
+#### 3. 前沿演进：Pre-LN 的局限与双归一化 (Double Norm)
+- **Pre-LN 的潜在问题**：随着网络加深，残差流 $x_l$ 的方差随层数累积增长，导致深层子模块分支 $F(\text{Norm}(x_l))$ 对残差流的相对更新幅度被逐渐稀释（Representation Collapse）。
+- **双归一化 / 非残差后归一化 (Double Norm)**：
+  $$x_{l+1} = x_l + \text{Norm}_{\text{out}}(F(\text{Norm}_{\text{in}}(x_l)))$$
+  - 在子层输入前做 Pre-Norm，在子层输出后、加回残差流**之前**再做一次 Norm；
+  - **残差主干道依然保持直通**，既享受了 Pre-LN 的稳定无损梯度，又约束了每一层分支更新的幅度（被 Gemma 2、Grok、OLMo 2 等前沿模型广泛采纳）。
+---
 
 ## 第 14 页 (Page 14)
 
@@ -194,6 +225,24 @@
 
 *(数据引自 Narang et al. 2020)*
 
+---
+### 💡 核心机制沉淀：RMSNorm 的性能本质——“FLOPs 伪命题”与“访存带宽减负”
+
+#### 1. 核心论点澄清：为什么说“FLOPs 不等于实际耗时”？
+在 GPU 硬件物理执行中，算子有着根本性的瓶颈划分（如 Lecture 02 中的 Roofline 拓扑）：
+- **算力受限 (Compute-bound，如 GEMM 矩阵乘法)**：占总 FLOPs 的 **99.8%**，Tensor Core 处于满载状态，耗时由总计算次数决定。
+- **访存受限 (Memory-bound / Element-wise，如 LayerNorm/RMSNorm)**：仅占总 FLOPs 的 **0.17%**。虽然算术计算极其简单，但计算前必须把张量从全局显存 (HBM) 搬进芯片寄存器，算完再写回显存。**耗时 90% 以上都在等待显存总线搬运数据，GPU 算力核心大部分时间处于空闲发呆状态**。
+
+#### 2. RMSNorm 为什么能带来 7%~15% 的真实端到端加速？
+RMSNorm 的加速本质**绝非省了几个加减法 FLOPs，而是减少了对全局显存的数据搬运趟数 (Memory Passes)**：
+
+| 归一化类型 | 计算公式 | 显存扫描趟数 (Memory Passes) | 访存与参数开销 |
+| :--- | :--- | :--- | :--- |
+| **标准 LayerNorm** | $y = \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} \odot \gamma + \beta$ | **2 趟扫描 (Two-pass)**：<br>1. 先读一遍 $x$ 算均值 $\mu = \mathbb{E}[x]$ 并暂存；<br>2. 再从显存读一遍 $x$ 结合均值算方差 $\sigma^2$ 并完成归一化。 | 两次扫描大张量，显存带宽开销大；需额外加载偏置参数 $\beta$。 |
+| **简化版 RMSNorm** | $y = \frac{x}{\sqrt{\frac{1}{d}\sum_{i=1}^d x_i^2 + \epsilon}} \odot \gamma$ | **1 趟扫描 (One-pass)**：<br>彻底舍弃均值 $\mu$ 项，在流式读取 $x$ 的同时累加平方和并直接完成缩放归一化。 | **减少了一整趟对整个隐藏层张量的显存读写**；无偏置参数 $\beta$。 |
+
+> 📌 **本质结论**：
+> RMSNorm 丢弃均值中心化（Zero-centering），使底层 CUDA Kernel 能将两趟显存访问熔断为**单趟流式访存 (One-pass)**，从根本上缓解了 Memory-bound 瓶颈，因而在大模型训练与推理中取得了扎实的物理加速。
 ---
 
 ## 第 18 页 (Page 18)
@@ -313,6 +362,40 @@ $$\text{FF}_{\text{ReGLU}}(x) = (\max(0, xW_1) \otimes xV) W_2$$
 * 现有证据一致表明，Swi/GeGLU 带来了稳定且明显的性能增益。
 
 ---
+### 💡 核心机制沉淀：前馈网络 (FFN) 结构辨析与门控激活函数 (*GLU) 底层原理
+
+#### 1. 符号与运算澄清：$\otimes$ 与 $\odot$ 的真实含义
+- 课件中的 $\otimes$ 与经典文献中的 $\odot$ 在此处均指 **逐元素相乘（Hadamard Product / Element-wise Multiplication，即 Python/PyTorch 中的 `*` 运算符）**，**绝非**升维的高阶张量外积（Kronecker Product）。
+- **计算定义**：对于同形状向量 $a, b \in \mathbb{R}^{d_{ff}}$，其结果向量的每个分量为 $(a \odot b)_i = a_i \cdot b_i$。
+
+#### 2. FFN 结构辨析：为什么公式中包含 $W_1$ 与 $W_2$？
+- **激活函数本身**：如 $\text{ReLU}(z)=\max(0, z)$、$\text{GELU}(z)$，是纯数学、**无任何可学习参数**的逐元素非线性算子。
+- **前馈网络子模块 ($\text{FFN}(x)$)**：指的是由两个线性投影层夹着一个无参激活层构成的两层 MLP Block：
+  $$\text{FFN}(x) = \sigma(x W_1) W_2$$
+  - $W_1 \in \mathbb{R}^{d_{\text{model}} \times d_{ff}}$：升维投影矩阵（Up-projection）；
+  - $\sigma(\cdot)$：无参中间激活函数；
+  - $W_2 \in \mathbb{R}^{d_{ff} \times d_{\text{model}}}$：降维投影矩阵（Down-projection）。
+
+#### 3. 为什么现代大模型普遍采用门控激活单元 (*GLU)？三大核心直觉
+在标准 FFN 基础上，GLU 引入了第二个线性变换分支 $V \in \mathbb{R}^{d_{\text{model}} \times d_{ff}}$，构成双分支逐元素点乘结构：
+$$\text{FFN}_{\text{GLU}}(x) = \Big(\underbrace{\sigma(x W_1)}_{\text{门控分支 (Gate)}} \odot \underbrace{(x V)}_{\text{特征候选分支 (Value)}}\Big) W_2$$
+
+1. **物理直觉：动态特征“软开关”（Soft Gating）**
+   - 分支 $x V$ 提取当前 Token 的候选语义特征；
+   - 分支 $\sigma(x W_1)$ 输出每个通道的放行系数（0 表示抑制关闭，大数值表示增强放行）；
+   - 逐元素相乘赋予了模型根据上下文动态路由、按需过滤特征通道的能力。
+2. **数学直觉：双线性特征交叉（Bilinear Interaction）**
+   - 传统 MLP 仅有一阶线性输入；
+   - 门控乘积 $\sigma(x W_1) \odot (x V)$ 引入了输入 $x$ 的**二阶多项式交互项**，在不增加网络深度的情况下成倍拓宽了高维特征空间的几何划分与表达能力。
+3. **优化直觉：反向传播的“梯度直通通道”（Gradient Highway）**
+   - 根据乘积求导法则 $\frac{\partial (a \odot b)}{\partial x} = \frac{\partial a}{\partial x} \odot b + a \odot \frac{\partial b}{\partial x}$；
+   - 线性分支 $b = x V$ 的导数为常数矩阵 $V$，为梯度提供了一条**绕过非线性饱和区（如 ReLU 死区）的直通线性梯度通路**，极大改善了深层网络的优化稳定性。
+
+#### 4. 参数量平衡技巧（2/3 维度缩放法则）
+- 传统 FFN 包含 2 个矩阵（$W_1, W_2$），总参数量为 $2 \times d_{\text{model}} \times d_{ff} = 8 d_{\text{model}}^2$（当标准 $d_{ff} = 4 d_{\text{model}}$ 时）；
+- GLU 变体包含 3 个矩阵（$W_{\text{gate}}, W_{\text{up}}, W_{\text{down}}$），为保持总参数量与算力开销相当，工业界统一将前馈维度缩小至原来的 **2/3**：
+  $$d_{ff} \approx \frac{8}{3} d_{\text{model}} \approx 2.66 d_{\text{model}}$$
+---
 
 ## 第 27 页 (Page 27)
 
@@ -338,6 +421,21 @@ $$\text{FF}_{\text{ReGLU}}(x) = (\max(0, xW_1) \otimes xV) W_2$$
 
 * **最近的模型**：Cohere Command A, Falcon 2 11B, Command R+
 
+---
+### 💡 核心机制沉淀：Transformer 块与 Attention 层的张量维度流转对齐
+
+#### 1. 概念澄清：中间注意力权重 vs 最终输出张量
+- **中间注意力权重矩阵 $A$**：由 $\text{Softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right)$ 计算得出，形状确实为 **$k \times k$**（$k$ 为序列长度，表示 Token 间的注意力分布）。
+- **加权聚合与投影输出 $\text{Attention}(X)$**：$A$ 必须进一步与 Value 矩阵相乘并经过输出投影层：
+  $$\text{Attention}(X) = \Big(\underbrace{A}_{k \times k} \cdot \underbrace{V}_{k \times d}\Big) \cdot \underbrace{W^O}_{d \times d} \quad \Longrightarrow \quad \mathbf{k \times d}$$
+  经过矩阵乘法 $(k \times k) \times (k \times d)$，每个 Token 加权汇聚整个序列的特征向量，输出维度严格还原为 **$k \times d$**。
+
+#### 2. 并行/串行残差块的维度一致性
+在公式 $y = x + \text{MLP}(\text{LayerNorm}(x)) + \text{Attention}(\text{LayerNorm}(x))$ 中：
+- 输入残差流 $x \in \mathbb{R}^{k \times d}$
+- $\text{Attention}(\text{LN}(x)) \in \mathbb{R}^{k \times d}$
+- $\text{MLP}(\text{LN}(x)) \in \mathbb{R}^{k \times d}$（经 $k \times d \to k \times d_{ff} \to k \times d$ 升降维）
+- 三者形状完全一致（均为 $k \times d$），可直接进行逐元素残差相加。
 ---
 
 ## 第 29 页 (Page 29)
@@ -366,6 +464,9 @@ $$\text{FF}_{\text{ReGLU}}(x) = (\max(0, xW_1) \otimes xV) W_2$$
   *代表模型：T5, Gopher, Chinchilla*
 * **RoPE 旋转位置嵌入** (见下一页)
   *代表模型：GPT-J, PaLM, LLaMA, 以及大多数 2024 年以后的模型*
+
+> 💡 **演进思考（为什么早期 GPT 采用绝对可学习位置嵌入？）**：
+> 原始正弦编码直接与词向量相加后，在注意力点积中会产生混杂的“语义内容-绝对位置”交叉项，未能实现纯粹的相对不变性；且在早期固定短上下文（512~2048）场景下，可学习嵌入不仅参数开销微乎其微（<0.02%），而且具备纯数据驱动的高拟合自由度。直到现代超长上下文需求爆发、绝对嵌入暴露出“无法外推”的硬伤后，才全面演进到了兼具纯净相对性与外推能力的 **RoPE 旋转位置编码**。
 
 ---
 
