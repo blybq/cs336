@@ -391,7 +391,67 @@ $$\text{FFN}_{\text{GLU}}(x) = \Big(\underbrace{\sigma(x W_1)}_{\text{门控分�
    - 根据乘积求导法则 $\frac{\partial (a \odot b)}{\partial x} = \frac{\partial a}{\partial x} \odot b + a \odot \frac{\partial b}{\partial x}$；
    - 线性分支 $b = x V$ 的导数为常数矩阵 $V$，为梯度提供了一条**绕过非线性饱和区（如 ReLU 死区）的直通线性梯度通路**，极大改善了深层网络的优化稳定性。
 
-#### 4. 参数量平衡技巧（2/3 维度缩放法则）
+#### 4. 隐藏层内部计算图与结构对比图解
+
+**（1）传统 FFN vs 现代门控 FFN (SwiGLU) 内部拓扑对比：**
+```
+【传统 FFN (如 GPT-3 / BERT)】           【现代门控 FFN (如 LLaMA / DeepSeek / Qwen)】
+  2 个权重矩阵，无门控分支                  3 个权重矩阵，双分支逐元素点乘 (⊙)
+
+       输入 z: (d_model)                         输入 z: (d_model)
+              │                                         ┌───────┴───────┐
+              ▼                                         ▼               ▼
+     [ W_up: 升维投影 ]                      [ W_gate: 门控投影 ]  [ W_up: 内容升维 ]
+       (d_model -> d_ff)                       (d_model -> d_ff)  (d_model -> d_ff)
+              │                                         │               │
+              ▼                                         ▼               │
+     [ GELU / ReLU 激活 ]                     [ SiLU / Swish 激活 ]      │
+              │                                         │               │
+              │                                         └───────┬───────┘
+              │                                                 ▼
+              │                                        [ 逐元素点乘 (⊙) ]
+              │                                          (按通道软开关过滤)
+              │                                                 │
+              └─────────────────┬───────────────────────────────┘
+                                │
+                                ▼
+                       [ W_down: 降维投影 ]
+                         (d_ff -> d_model)
+                                │
+                                ▼
+                           输出: (d_model)
+```
+
+**（2）包含 SwiGLU 的完整隐藏层（Transformer Block）张量流转图：**
+```mermaid
+flowchart TD
+    In["输入残差流 x: (k, d_model)"] --> LN1["Pre-RMSNorm 1"]
+    LN1 --> Attn["多头自注意力 (Attention)"]
+    Attn --> Add1["残差相加 1"]
+    In --> Add1
+
+    Add1 --> Mid["中间残差流 x1: (k, d_model)"]
+    Mid --> LN2["Pre-RMSNorm 2"]
+    
+    subgraph SwiGLU_FFN["【SwiGLU 前馈网络子层 (FFN)】"]
+        LN2 --> W_gate["W_gate: (d_model -> d_ff)"]
+        LN2 --> W_up["W_up: (d_model -> d_ff)"]
+        
+        W_gate --> Silu["SiLU / Swish 激活<br>(计算门控开度)"]
+        
+        Silu --> Mul["逐元素点乘 (⊙)<br>(k, d_ff)"]
+        W_up --> Mul
+        
+        Mul --> W_down["W_down: (d_ff -> d_model)"]
+        W_down --> FFN_Out["FFN 输出: (k, d_model)"]
+    end
+
+    Mid --> Add2["残差相加 2"]
+    FFN_Out --> Add2
+    Add2 --> Out["输出残差流 x2: (k, d_model) -> 流向下一个 Block"]
+```
+
+#### 5. 参数量平衡技巧（2/3 维度缩放法则）
 - 传统 FFN 包含 2 个矩阵（$W_1, W_2$），总参数量为 $2 \times d_{\text{model}} \times d_{ff} = 8 d_{\text{model}}^2$（当标准 $d_{ff} = 4 d_{\text{model}}$ 时）；
 - GLU 变体包含 3 个矩阵（$W_{\text{gate}}, W_{\text{up}}, W_{\text{down}}$），为保持总参数量与算力开销相当，工业界统一将前馈维度缩小至原来的 **2/3**：
   $$d_{ff} \approx \frac{8}{3} d_{\text{model}} \approx 2.66 d_{\text{model}}$$
@@ -575,6 +635,27 @@ $$\text{FFN}(x) = \max(0, xW_1 + b_1)W_2 + b_2$$
 $$d_{ff} = 4 d_{model}$$
 这几乎总是正确的。只有少数几个例外。
 
+> 💡 **核心概念与术语辨析（隐藏层 vs 前馈子层 vs LM Head 输出头）**：
+> 1. **隐藏层（Hidden Layers / Blocks）**：输入层之后、最终输出层之前堆叠的所有 **Transformer Block**（如 32 层模型即有 32 个隐藏层），其主干道上传递的特征向量维度即为 **隐藏维度 $d_{model}$**。
+> 2. **前馈网络子层（FFN / MLP Sub-layer）**：每一个 Block 内部紧跟在 Attention 之后的局部特征提炼模块。它接收 $d_{model}$ 输入，在内部升维至 **$d_{ff}$（前馈中间维度）** 进行非线性激活与知识记忆，最后再降维还原为 $d_{model}$ 输出加回残差流。
+> 3. **语言模型输出头（LM Head / Unembedding Layer）**：仅位于**整个模型最顶端**（经过全部 $N$ 层 Block 之后），负责将最终的 $d_{model}$ 维表征映射为词表维度的预测 logits（维度 $d_{model} \to V$，其输出维度 $V$ 才是由分词器词表大小决定的）。
+> 
+> ```mermaid
+> flowchart TD
+>     subgraph OutputLayer["【输出层 (仅在网络顶端执行 1 次)】"]
+>         LN["Final LayerNorm / RMSNorm"] --> LMHead["LM Head (Unembedding Layer)<br>线性映射: d_model ➔ V (词表大小)"]
+>         LMHead --> Logits["Logits 预测向量 (V 维)"]
+>     end
+> 
+>     subgraph HiddenLayers["【隐藏层 (堆叠 N 个 Transformer Block，如 32 层)】"]
+>         In["输入残差流: d_model 维"] --> Attn["Attention 子层: (d_model ➔ d_model)"]
+>         Attn --> FFN["FFN 前馈子层<br>├─ 升维膨胀: d_model ➔ d_ff (例如 4倍)<br>├─ 激活/门控: d_ff ➔ d_ff<br>└─ 降维还原: d_ff ➔ d_model"]
+>         FFN --> Out["输出残差流: d_model 维 ➔ 流向下一层 Block"]
+>     end
+> 
+>     HiddenLayers --> LN
+> ```
+
 ---
 
 ## 第 38 页 (Page 38)
@@ -728,6 +809,12 @@ $$d_{model} = 1024$$
 
 > **结论**：单语言词表不需要太大，但多语言词表必须很大，以确保对各种语言的压缩率。
 
+> 💡 **核心思考（为什么多语言词表仅需扩展约 3~5 倍即可覆盖全球语言？）**：
+> 1. **子词跨语言高复用性**：印欧语系、代码符号、专有名词与汉字文化圈共享大量词根与子词片段，单个 Token 可在数十种语言中复用；
+> 2. **256 字节终极兜底（Byte-Fallback）**：现代分词器内置 256 个 UTF-8 基础单字节，任何生僻小众语言均可无损拆解为字节序列，彻底消除了未登录词（OOV）；
+> 3. **底层重构与高层知识迁移**：被拆碎的字节在 Transformer 底层（1~4层）即被 Self-Attention 自动重构为完整词汇语义，并在中高层隐空间无缝共享海量预训练知识；
+> 4. **显存经济学约束**：词表大小直接线性决定 Embedding 与 LM Head 的显存开销（$2 \times V \times d_{model}$），100k~250k 恰好是“多语言压缩率”与“GPU 显存/Softmax 算力税”之间的最优平衡。
+
 ---
 
 ## 第 48 页 (Page 48)
@@ -805,6 +892,16 @@ $$d_{model} = 1024$$
 
 **Softmax 操作可能会导致行为异常（由于指数运算或除以零）。**
 
+> 💡 **核心机制澄清（为什么训练 Loss 突刺与 Softmax 密切相关？）**：
+> 1. **模型中两处关键的 Softmax 算子**：
+>    - **注意力子层 Softmax**：存在于**每一个 Transformer Block 内部**，用于计算注意力矩阵 $\text{Softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right)$；
+>    - **输出预测头 Softmax**：仅存在于**模型最顶端**，用于将输出 Logits 转化为词表概率分布 $\text{Softmax}(\text{logits})$。
+> 2. **数值不稳定与 Loss 尖峰的物理成因**：
+>    在低精度（FP16/BF16）训练中，一旦中间得分漂移过大，Softmax 的指数运算 $e^z$ 会瞬间触发浮点上溢变 `+Inf` 或下溢除零，反向传播时诱发梯度爆炸产生 `NaN`，导致 Loss 曲线发生断崖式突刺（如第 52 页蓝色曲线）。
+> 3. **后续两类针对性稳定方案**：
+>    - 针对**输出层**：引入 **z-loss**（第 54 页）与 **Logit 软截断**（第 56 页）；
+>    - 针对**注意力层**：引入 **QK-norm**（第 55 页）。
+
 ---
 
 ## 第 54 页 (Page 54)
@@ -871,6 +968,49 @@ $$\text{logits} \gets \text{soft\_cap} \times \tanh\left(\frac{\text{logits}}{\t
 *(其中：d = 隐藏维度，b = 批大小，n = 序列长度，h = 头数，k = 头维度)*
 
 ---
+### 💡 核心机制沉淀：自注意力算术复杂度与访存量推导（并行 Prefill 阶段）
+
+#### 1. 基础计算量定理与符号约定
+- **矩阵乘法算力准则**：若矩阵 $A \in \mathbb{R}^{m \times n}$ 乘矩阵 $B \in \mathbb{R}^{n \times k}$，则其总浮点运算量为 **$2 \times m \times n \times k$ FLOPs**（每个输出元素需 $n$ 次乘法与 $n$ 次加法，共 $2n$ 次浮点操作）。
+- **张量符号定义**：
+  - $b$：Batch size（批大小）
+  - $n$：Sequence length（序列长度 / 上下文 Token 数）
+  - $d$：Hidden dimension（模型隐藏层维度 $d_{\text{model}}$）
+  - $h$：Number of heads（注意力头数）
+  - $k$：Head dimension（每个头的维度 $d_k$），满足 **$d = h \cdot k$**（即 $k = d / h$）
+
+---
+
+#### 2. 自注意力层 4 步矩阵乘法的精确维度与 FLOPs 计算
+
+| 计算步骤 | 参与运算的矩阵与张量形状 | 单步 FLOPs 计算公式 | 结果量级 |
+| :--- | :--- | :--- | :--- |
+| **步骤 1：$Q, K, V$ 线性投影** | 输入 $X \in \mathbb{R}^{(b \cdot n) \times d}$<br>权重 $W_Q, W_K, W_V \in \mathbb{R}^{d \times d}$<br>输出 $Q, K, V \in \mathbb{R}^{(b \cdot n) \times d}$ | 3 个独立的 $(bn \times d) \times (d \times d)$ 乘法：<br>$3 \times [2 \cdot (bn) \cdot d \cdot d]$ | **$6 b n d^2$** |
+| **步骤 2：注意力得分 $A = Q K^T$** | $h$ 个头并行，每个头切片为：<br>$Q_h \in \mathbb{R}^{b \times n \times k}$, $K_h^T \in \mathbb{R}^{b \times k \times n}$<br>输出得分矩阵 $A_h \in \mathbb{R}^{b \times n \times n}$ | $h$ 个独立的 $(b \times n \times k) \times (b \times k \times n)$ 乘法：<br>$h \times [2 \cdot b \cdot n \cdot k \cdot n] = 2 b n^2 (hk)$ | **$2 b n^2 d$** |
+| **步骤 3：加权值聚合 $O = A V$** | 每个头注意力权重 $A_h \in \mathbb{R}^{b \times n \times n}$<br>值切片 $V_h \in \mathbb{R}^{b \times n \times k}$<br>输出切片 $O_h \in \mathbb{R}^{b \times n \times k}$ | $h$ 个独立的 $(b \times n \times n) \times (b \times n \times k)$ 乘法：<br>$h \times [2 \cdot b \cdot n \cdot n \cdot k] = 2 b n^2 (hk)$ | **$2 b n^2 d$** |
+| **步骤 4：输出线性投影 $W_O$** | 拼接张量 $O \in \mathbb{R}^{(b \cdot n) \times d}$<br>输出投影矩阵 $W_O \in \mathbb{R}^{d \times d}$<br>最终输出 $Y \in \mathbb{R}^{(b \cdot n) \times d}$ | 单次 $((bn) \times d) \times (d \times d)$ 乘法：<br>$2 \cdot (bn) \cdot d \cdot d$ | **$2 b n d^2$** |
+
+- **总算术运算量（FLOPs）**：
+  $$\text{FLOPs} = 6 b n d^2 + 2 b n^2 d + 2 b n^2 d + 2 b n d^2 = 8 b n d^2 + 4 b n^2 d = \mathbf{O(b n d^2)}$$
+  *(常规大模型中隐藏维度 $d \approx 4096 \sim 12288$，远大于单块长度 $n$，故以 $b n d^2$ 为主导)*。
+
+---
+
+#### 3. 总显存访问量（Memory Access）与算术强度
+
+1. **读取权重参数（Weights）**：
+   - 4 个大投影矩阵（$W_Q, W_K, W_V, W_O \in \mathbb{R}^{d \times d}$）总大小为 $4 \times d^2$，访存量为 $\mathbf{O(d^2)}$；
+2. **读取与写回序列激活值（Activations）**：
+   - 激活张量 $X, Q, K, V, O, Y \in \mathbb{R}^{b \times n \times d}$，访存量为 $\mathbf{O(b n d)}$；
+3. **中间注意力矩阵读写**：
+   - $h$ 个头的注意力矩阵 $A \in \mathbb{R}^{b \times h \times n \times n}$，大小为 $b h n^2$，访存量为 $\mathbf{O(b h n^2)}$。
+
+- **总显存访问量**：
+  $$\text{Memory Access} = \mathbf{O(b n d + b h n^2 + d^2)}$$
+- **算术强度（Arithmetic Intensity = 计算量 / 访存量）**：
+  $$\text{Arithmetic Intensity} = \frac{O(b n d^2)}{O(b n d + b h n^2 + d^2)} = \frac{1}{\frac{1}{d} + \frac{h n}{d^2} + \frac{1}{b n}} \stackrel{h/d = 1/k}{\Longrightarrow} \mathbf{O\left(\left(\frac{1}{k} + \frac{1}{b n}\right)^{-1}\right)}$$
+- **物理意义**：算术强度很高（通常 > 100 FLOPs/Byte），处于 **Compute-bound（算力受限）** 状态，GPU 算力核心能维持极高的满载利用率。
+---
 
 ## 第 59 页 (Page 59)
 
@@ -891,6 +1031,28 @@ $$\text{logits} \gets \text{soft\_cap} \times \tanh\left(\frac{\text{logits}}{\t
 * *有没有办法绕过这个限制？因为 $n/d$ 项很难降低。*
 
 ---
+### 💡 核心机制沉淀：增量生成（Decode 阶段）算术强度崩溃机理推导
+
+在自回归逐字生成阶段，模型**每次只生成 1 个新 Token（$n_{\text{new}} = 1$）**，但需读取过去积累的全部历史 Token 的 **KV Cache**：
+
+#### 1. 总算术运算量
+生成完整 $n$ 个 Token 累计的计算量与全序列并行相同：
+$$\text{FLOPs} = \mathbf{O(b n d^2)}$$
+
+#### 2. 总显存访问量（显存带宽瓶颈爆发）
+在生成第 $t$ 个 Token 的单步中（$t = 1, 2, \dots, n$）：
+1. **模型权重全量重读**：每生成 1 个 Token，都要将形状为 $d \times d$ 的权重加载一遍，生成 $n$ 个词累计读取 $\mathbf{n \cdot d^2}$；
+2. **KV Cache 累积扫描**：在第 $t$ 步，必须把历史前 $t$ 个 Token 的 Key/Value 缓存（形状为 $b \times t \times d$）从显存搬进芯片。生成 $n$ 步的累计搬运总量为：
+   $$\sum_{t=1}^n (b \cdot t \cdot d) = b \cdot d \cdot \frac{n(n+1)}{2} = \mathbf{O(b n^2 d)}$$
+
+- **总显存访问量**：
+  $$\text{Memory Access} = \mathbf{O(b n^2 d + n d^2)}$$
+- **增量生成算术强度**：
+  $$\text{Arithmetic Intensity} = \frac{O(b n d^2)}{O(b n^2 d + n d^2)} = \frac{1}{\frac{n}{d} + \frac{1}{b}} = \mathbf{O\left(\left(\frac{n}{d} + \frac{1}{b}\right)^{-1}\right)}$$
+
+> 📌 **为什么算术强度崩溃？**
+> 分母中出现了随序列长度线性膨胀的 **$\frac{n}{d}$ 项**（例如当 $n = 32\text{k}, d = 4096$ 时，$\frac{n}{d} \approx 8$），导致算术强度暴跌至 **< 1 FLOPs/Byte**。GPU 绝大部分时间都在等待从显存搬运庞大的 KV Cache，算力核心极度饥饿（严重 Memory-bound）。
+---
 
 ## 第 61 页 (Page 61)
 
@@ -903,6 +1065,24 @@ $$\text{logits} \gets \text{soft\_cap} \times \tanh\left(\frac{\text{logits}}{\t
 
 *(插图引自 fireworks.ai 博客)*
 
+---
+### 💡 核心机制沉淀：MQA（Multi-Query Attention）如何重构算术强度
+
+#### 1. MQA 核心张量维度变化
+- **Query**：保持多头不变，$Q \in \mathbb{R}^{(b \cdot n) \times d}$（$h$ 个头，每个头维度 $k = d/h$）；
+- **Key 和 Value**：**强制压缩为仅有 1 个头**，即 $K, V \in \mathbb{R}^{(b \cdot n) \times k}$（维度从 $d$ 缩减为单个头维度 $k = d/h$），所有 $h$ 个 Query 头共享该组 KV。
+
+#### 2. 显存访问量与算术强度改善推导
+- **KV Cache 访存缩减**：每步读取的 KV Cache 大小直接缩小为原来的 **$1/h$**（从 $b \cdot t \cdot d$ 降为 $b \cdot t \cdot k$），生成 $n$ 个词的累计 KV 搬运总量为：
+  $$\sum_{t=1}^n (b \cdot t \cdot k) = b \cdot k \cdot \frac{n^2}{2} = \mathbf{O(b n^2 k)} = \mathbf{O\left(b n^2 \frac{d}{h}\right)}$$
+- **MQA 总显存访问量**：
+  $$\text{Memory Access} = \mathbf{O(b n d + b n^2 k + n d^2)}$$
+- **MQA 算术强度**：
+  $$\text{Arithmetic Intensity} = \frac{O(b n d^2)}{O\left(b n d + b n^2 \frac{d}{h} + n d^2\right)} = \mathbf{O\left(\left(\frac{1}{d} + \frac{n}{d h} + \frac{1}{b}\right)^{-1}\right)}$$
+
+> 💡 **核心破局点**：
+> 最致命的显存瓶颈项从原来的 **$\frac{n}{d}$** 变成了 **$\frac{n}{d \cdot h}$**，被除以了头数 $h$（通常 $h = 32 \sim 64$）！
+> 这意味着在长文本推理生成时，**KV Cache 访存压力瞬间降低 32~64 倍**，算术强度成倍回升，推理吞吐量获得数倍的直接硬件加速。
 ---
 
 ## 第 62 页 (Page 62)
@@ -933,6 +1113,144 @@ $$\text{logits} \gets \text{soft\_cap} \times \tanh\left(\frac{\text{logits}}{\t
 
 *(插图来自 Child et al. 2019)*
 
+---
+### 💡 核心机制沉淀：稀疏注意力 (Sparse) 与滑动窗口注意力 (SWA) 深度图解与坐标网格
+
+#### 1. 基础坐标与因果定义（避免读图混淆）
+在自回归因果语言模型的注意力掩码矩阵（$A = Q K^T$）中：
+- **行（Row $i$，横向）**：代表 **当前 Token（Query，谁在观察）**；
+- **列（Column $j$，纵向）**：代表 **历史 Token（Key，被观察者）**；
+- **下三角因果性**：任何 Token $i$ 只能看 $j \le i$ 的历史词，右上角（未来词）全部被屏蔽（记为 `·`）。
+
+---
+
+#### 2. 四大注意力模式的逐点坐标网格图与连接规则
+
+##### (1) 标准全因果自注意力 (Full Dense Attention，图 a)
+* **连接规则**：当前词关注前面**所有**历史词（$j \le i$）。
+* **复杂度**：计算量 $O(N^2)$，KV Cache 显存随长度线性无限增长。
+* **逐点坐标网格图（N=8）**：
+```
+行(Query)\列(Key) | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 逐行关注的历史 Token 清单
+-------------------+---+---+---+---+---+---+---+---+--------------------------
+Token 1 (第 1 行)  | █ | · | · | · | · | · | · | · | ➔ [1] (第1个词只能看自己)
+Token 2 (第 2 行)  | █ | █ | · | · | · | · | · | · | ➔ [1, 2]
+Token 3 (第 3 行)  | █ | █ | █ | · | · | · | · | · | ➔ [1, 2, 3]
+Token 4 (第 4 行)  | █ | █ | █ | █ | · | · | · | · | ➔ [1, 2, 3, 4]
+Token 5 (第 5 行)  | █ | █ | █ | █ | █ | · | · | · | ➔ [1, 2, 3, 4, 5]
+Token 6 (第 6 行)  | █ | █ | █ | █ | █ | █ | · | · | ➔ [1, 2, 3, 4, 5, 6]
+Token 7 (第 7 行)  | █ | █ | █ | █ | █ | █ | █ | · | ➔ [1, 2, 3, 4, 5, 6, 7]
+Token 8 (第 8 行)  | █ | █ | █ | █ | █ | █ | █ | █ | ➔ [1..8] (最后词看前面所有词)
+```
+
+##### (2) 滑动窗口注意力 (Sliding Window Attention / SWA)
+* **连接规则**：当前词只关注最近 $W$ 个局部词（$i - W < j \le i$），超过窗口的历史词直接遗忘。
+* **复杂度**：计算量 $O(N \cdot W)$（严格线性），KV Cache 大小被固定为 $W$（Rolling Cache）。
+* **逐点坐标网格图（N=8，窗口大小 W=3）**：
+```
+行(Query)\列(Key) | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 逐行关注的历史 Token 清单
+-------------------+---+---+---+---+---+---+---+---+--------------------------
+Token 1 (第 1 行)  | █ | · | · | · | · | · | · | · | ➔ [1]
+Token 2 (第 2 行)  | █ | █ | · | · | · | · | · | · | ➔ [1, 2]
+Token 3 (第 3 行)  | █ | █ | █ | · | · | · | · | · | ➔ [1, 2, 3] (达到窗口上限 3)
+Token 4 (第 4 行)  | · | █ | █ | █ | · | · | · | · | ➔ [2, 3, 4] (丢弃超出窗口的词 1)
+Token 5 (第 5 行)  | · | · | █ | █ | █ | · | · | · | ➔ [3, 4, 5] (丢弃词 1, 2)
+Token 6 (第 6 行)  | · | · | · | █ | █ | █ | · | · | ➔ [4, 5, 6] (丢弃词 1, 2, 3)
+Token 7 (第 7 行)  | · | · | · | · | █ | █ | █ | · | ➔ [5, 6, 7]
+Token 8 (第 8 行)  | · | · | · | · | · | █ | █ | █ | ➔ [6, 7, 8]
+```
+
+##### (3) 跨步稀疏注意力 (Strided Sparse Attention，图 b)
+* **严谨数学定义（Child et al. 2019）**：
+  设分块/跨步大小为 $p$。对于第 $i$ 个 Token（$1 \le i \le N$），其允许关注的历史 Token 集合 $S_i$ 为两个子集的并集：
+  $$S_i = S_i^{\text{row}} \cup S_i^{\text{col}}$$
+  - **行/块内局部前缀集（Row Head）**：
+    $$S_i^{\text{row}} = \Big\{ j \le i \;\Big|\; \lfloor (j-1)/p \rfloor = \lfloor (i-1)/p \rfloor \Big\}$$
+    即：与 Token $i$ 处于**同一个大小为 $p$ 的分块内、且位于 $i$ 之前或自身**的所有 Token。
+  - **列/跨步周期采样集（Column Head）**：
+    $$S_i^{\text{col}} = \Big\{ j \le i \;\Big|\; (i - j) \pmod p = 0 \Big\}$$
+    即：距离 Token $i$ 为步长 $p$ 的整数倍的历史 Token。
+* **物理模型（重排为 $p \times p$ 二维网格表格）**：
+  以 $N=9, p=3$ 为例，将一维序列按行填入 3×3 表格：
+  ```
+  【二维空间重排表 (N=9, p=3)】
+             第 1 列     第 2 列     第 3 列
+  Block 1:   [ 1 ]       [ 2 ]       [ 3 ]      <-- 第 1 行/块
+  Block 2:   [ 4 ]       [ 5 ]       [ 6 ]      <-- 第 2 行/块
+  Block 3:   [ 7 ]       [ 8 ]       [ 9 ]      <-- 第 3 行/块
+  ```
+* **具体 Token 的计算过程示例（为什么 Token 4 不看 2、3？）**：
+  - **Token 4**（处于 Block 2 第 1 列）：
+    - 块内局部 $S_4^{\text{row}} = [4]$（Block 2 中位于 4 之前的只有 4 自身）；
+    - 跨步同列 $S_4^{\text{col}} = [1, 4]$（第 1 列上方历史词为 1）；
+    - 并集结果：**`[1, 4]`**（2 和 3 既不同行也不同列，故不连接）。
+  - **Token 5**（处于 Block 2 第 2 列）：
+    - 块内局部 $S_5^{\text{row}} = [4, 5]$（Block 2 中位于 5 之前的词）；
+    - 跨步同列 $S_5^{\text{col}} = [2, 5]$（第 2 列上方历史词为 2）；
+    - 并集结果：**`[2, 4, 5]`**。
+  - **Token 8**（处于 Block 3 第 2 列）：
+    - 块内局部 $S_8^{\text{row}} = [7, 8]$（Block 3 中位于 8 之前的词）；
+    - 跨步同列 $S_8^{\text{col}} = [2, 5, 8]$（第 2 列上方历史词为 2, 5）；
+    - 并集结果：**`[2, 5, 7, 8]`**。
+  - **Token 9**（处于 Block 3 第 3 列）：
+    - 块内局部 $S_9^{\text{row}} = [7, 8, 9]$；
+    - 跨步同列 $S_9^{\text{col}} = [3, 6, 9]$；
+    - 并集结果：**`[3, 6, 7, 8, 9]`**。
+* **逐点坐标网格图（N=9，步长 p=3）**：
+```
+行(Query)\列(Key) | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 逐行关注的历史 Token 清单与物理原因
+-------------------+---+---+---+---+---+---+---+---+---+-----------------------------------
+Token 1 (第 1 行)  | █ | · | · | · | · | · | · | · | · | ➔ [1] (只看自己)
+Token 2 (第 2 行)  | █ | █ | · | · | · | · | · | · | · | ➔ [1, 2] (同块局部 1, 2)
+Token 3 (第 3 行)  | █ | █ | █ | · | · | · | · | · | · | ➔ [1, 2, 3] (Block 1 内部全连)
+Token 4 (第 4 行)  | █ | · | · | █ | · | · | · | · | · | ➔ [1, 4] (同列跨步 1 + 同块自身 4)
+Token 5 (第 5 行)  | · | █ | · | █ | █ | · | · | · | · | ➔ [2, 4, 5] (同列跨步 2 + 同块局部 4, 5)
+Token 6 (第 6 行)  | · | · | █ | █ | █ | █ | · | · | · | ➔ [3, 4, 5, 6] (同列跨步 3 + 同块 4, 5, 6)
+Token 7 (第 7 行)  | █ | · | · | █ | · | · | █ | · | · | ➔ [1, 4, 7] (同列跨步 1, 4 + 同块自身 7)
+Token 8 (第 8 行)  | · | █ | · | · | █ | · | █ | █ | · | ➔ [2, 5, 7, 8] (同列跨步 2, 5 + 同块 7, 8)
+Token 9 (第 9 行)  | · | · | █ | · | · | █ | █ | █ | █ | ➔ [3, 6, 7, 8, 9] (跨步 3, 6 + 同块 7, 8, 9)
+```
+
+##### (4) 固定/全局稀疏注意力 (Fixed Sparse Attention，图 c)
+* **严谨数学定义（Child et al. 2019）**：
+  将序列划分为大小为 $p$ 的块，**每个块末尾的词（如第 3, 6, 9 列）作为全局汇总代表**：
+  $$S_i = S_i^{\text{row}} \cup S_i^{\text{summary}}$$
+  - **行/块内局部前缀集**：$S_i^{\text{row}} = \{ j \le i \mid \lfloor (j-1)/p \rfloor = \lfloor (i-1)/p \rfloor \}$（同块内部前缀互相连通）；
+  - **全局代表列汇总集**：$S_i^{\text{summary}} = \{ j \le i \mid j \pmod p = 0 \}$（前面所有已结束 Block 的末尾代表列）。
+* **具体 Token 的计算过程示例**：
+  - **Token 4**（处于 Block 2 第 1 个位置）：
+    - 块内局部：`[4]`；
+    - 读取代表：Block 1 的末尾代表 **`[3]`**；
+    - 并集：**`[3, 4]`**。
+  - **Token 5**（处于 Block 2 第 2 个位置）：
+    - 块内局部：`[4, 5]`；
+    - 读取代表：Block 1 的末尾代表 **`[3]`**；
+    - 并集：**`[3, 4, 5]`**。
+  - **Token 8**（处于 Block 3 第 2 个位置）：
+    - 块内局部：`[7, 8]`；
+    - 读取代表：前面所有块的末尾代表 **`[3, 6]`**；
+    - 并集：**`[3, 6, 7, 8]`**。
+* **逐点坐标网格图（N=9，分块 p=3，汇总代表列为 3, 6, 9）**：
+```
+行(Query)\列(Key) | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 逐行关注的历史 Token 清单与物理原因
+-------------------+---+---+---+---+---+---+---+---+---+-----------------------------------
+Token 1 (第 1 行)  | █ | · | · | · | · | · | · | · | · | ➔ [1]
+Token 2 (第 2 行)  | █ | █ | · | · | · | · | · | · | · | ➔ [1, 2]
+Token 3 (第 3 行)  | █ | █ | █ | · | · | · | · | · | · | ➔ [1, 2, 3] (汇总块 1 全部信息)
+Token 4 (第 4 行)  | · | · | █ | █ | · | · | · | · | · | ➔ [3, 4] (读取块1代表 3 + 自己 4)
+Token 5 (第 5 行)  | · | · | █ | █ | █ | · | · | · | · | ➔ [3, 4, 5] (读取块1代表 3 + 块2内的 4, 5)
+Token 6 (第 6 行)  | · | · | █ | █ | █ | █ | · | · | · | ➔ [3, 4, 5, 6] (读取代表 3 + 汇总块 2)
+Token 7 (第 7 行)  | · | · | █ | · | · | █ | █ | · | · | ➔ [3, 6, 7] (读取代表 3, 6 + 自己 7)
+Token 8 (第 8 行)  | · | · | █ | · | · | █ | █ | █ | · | ➔ [3, 6, 7, 8] (读取代表 3, 6 + 块3内的 7, 8)
+Token 9 (第 9 行)  | · | · | █ | · | · | █ | █ | █ | █ | ➔ [3, 6, 7, 8, 9] (读取代表 3, 6 + 汇总块 3)
+```
+
+---
+
+#### 3. 现代工业界演进：交替混合注意力（Interleaved Attention，第 65~66 页）
+虽然纯 SWA 大幅削减了算力，但在长文本“大海捞针”任务中直接检索长程信息存在衰减。现代大模型（Cohere Command A、LLaMA 4、Gemma 3/4、Qwen 2.5、OLMo 3）采用**交替堆叠范式**：
+- **大部分层（如 3/4 层）**：使用 **SWA 滑动窗口注意力**，降低 75% 的长序列计算与 KV Cache 压力；
+- **少数层（如 1/4 层）**：使用 **Full 全局自注意力**，保证长距离精准检索与全局上下文贯通。
 ---
 
 ## 第 65 页 (Page 65)
