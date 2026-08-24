@@ -1,1190 +1,922 @@
-# 第 13 课：数据 I (Lecture 13: Data I)
-
-- 之前的课程：在**给定数据**的情况下如何训练模型。
-- 接下来的两节课：我们应该在**什么数据**上进行训练？
-
-```python
-from edtrace import text, image, link
-from lecture_util import article_link
-from references import dclm_2024, nemotron_cc_2024, olmo_2_2025, llama_3_2024, gpt2_2019, openwebtext_2019, gopher_2021, alpaca_2023
-```
-
-```python
-def motivation():
-    text("**Data** is the most important thing to get right in training language models.")
-
-    text("One justification: let's see what companies disclose.")
-    text("Open-weight models (e.g., Llama 3 "), link(llama_3_2024), text(" have full transparency into architecture")
-    text("...and even training procedures")
-    text("...but basically no information on data.")
-    image("images/llama3-data.png", width=700)
-    
-    text("Reasons for secrecy:")
-    text("1. Competitive dynamics")
-    text("2. Copyright liability")
-
-    text("- Before foundation models, data work meant heavy annotation of labeled data for supervised learning.")
-    text("- Now there's less annotation, but there's still a lot of curation and cleaning.")
-    text("- Data is fundamentally a long-tail problem, scales with human effort (unlike architectures, systems).")
-
-    text("Stages of training:")
-    text("1. Pre-training: train on raw text (e.g., documents from the web)")
-    text("2. Mid-training: train more on high quality data to enhance capabilities")
-    text("3. Post-training: train on chat transcripts or reinforcement learning")
-    text("In practice, the lines are blurry and there could be more stages")
-    text("...but the basic trend is throughout training, we go from")
-    text("large amounts of lower quality data to")
-    text("small amounts of high quality data.")
-
-    text("Terminology:")
-    text("- Base model: after pre-training + mid-training")
-    text("- Instruct/chat model: after post-training")
-    text("(Increasingly, base models are not released - e.g., Qwen3.5-397B-A17B is an instruct model.)")
-
-    text("Example (OLMo from AI2) "), link(olmo_2_2025)
-    text("1. **Pre-training**")
-    image("images/olmo2-pretraining.png", width=600)
-    text("2. **Mid-training**")
-    image("images/olmo2-dolmino.png", width=600)
-    text("3. **Post-training** "), link("https://arxiv.org/pdf/2411.15124")
-    image("images/tulu.png", width=600)
-
-    text("What are these datasets?  How are they chosen and processed?")
-
-
-def raw_sources():
-    text("One might often hear: *language models are trained on the entire Internet*.")
-    text("Slightly more accurately, ~Internet~ public (world wide) web.")
-    text("But this is not quite right either...")
-
-    text("First, the web consists of a set of live servers that one can connect to:")
-    text("`$ curl https://cs336.stanford.edu/`")
-
-    text("You can't train on live servers.")
-    text("A **crawler**:")
-    text("- Discovers webpages (starting from a seed set)")
-    text("- Downloads the discovered webpages")
-
-    text("However, you can't download and train on all the webpages.")
-
-    text("Dynamic content:")
-    text("- Many sites these days are apps")
-    text("- URL doesn't change")
-    text("- Need to click buttons and submit forms to access content")
-    text("- Examples: Discord, wandb")
-
-    text("Authentication:")
-    text("- Sometimes need login with an account (and pay usually)")
-    text("- Example: Facebook, X, LinkedIn, NYTimes (huge content behind walled gardens)")
-
-    text("Technical restrictions:")
-    text("- Not allowed to download some content based on `robots.txt` ([example](https://www.nytimes.com/robots.txt)) (voluntary)")
-    text("- Website might use Cloudflare to detect and block bot activity (present CAPTCHAs)")
-    text("- Website might block certain IP addresses / countries")
-    text("- Website might have rate limits")
-    
-    text("Legal restrictions:")
-    text("- Terms of service (ToS) might prohibit downloading using bots")
-    text("- You might not have a license to copy the webpages (for training)")
-
-    text("Decline of consent "), link("https://arxiv.org/abs/2407.14933")
-    text("- Examined restrictions (robots.txt, ToS) for URLs in common datasets (C4, RefinedWeb, Dolma)")
-    text("- Restrictions have increased over time")
-    image("images/decline-consent.png", width=700)
-
-    text("When crawlers are not well-behaved:")
-    image("images/anthropic-crawling.png", width=500)
-    text("- Factors: ToS, robots.txt, server load (degrades service, costs website money)")
-    text("- And then there is copyright (more later)...")
-
-    text("Shadow libraries "), article_link("https://en.wikipedia.org/wiki/Shadow_library")
-    text("- Technically part of the web")
-    text("- Examples: Library Genesis (LibGen), Z-Library, Anna's Archive, Sci-Hub")
-    text("- Disregards copyright and bypasses paywalls (e.g., Elsevier)")
-    text("- Received takedown orders, lawsuits, blocked in various countries")
-    text("- Usually controls are circumvented, have servers in various countries")
-    text("- Some argue this makes freely available what should be free")
-    text("- From a legal perspective, this is piracy and copyright infringement")
-    text("- LibGen has ~4M books (2019), Sci-Hub has ~88M papers (2022)")
-
-    text("Summary:")
-    text("- The Internet is huge")
-    text("- Many technical and legal restrictions on what data one can access")
-
-
-def copyright():
-    text("What data is legal to use (for training)?")
-
-    text("### Intellectual property law")
-    text("- Goal: *incentivize* the creation of intellectual goods")
-    text("- Types of intellectual property: copyright, patents, trademarks, trade secrets.")
-
-    text("**Copyright law**:")
-    text("- Goes back to 1709 in England (Statute of Anne), first time regulated by governments and courts "), article_link("https://en.wikipedia.org/wiki/Statute_of_Anne")
-    text("- In United States, most recent: Copyright Act of 1976 "), article_link("https://en.wikipedia.org/wiki/Copyright_Act_of_1976")
-    text("- Copyright protection applies to *'original works of authorship fixed in any tangible medium of expression, now known or later developed, from which they can be perceived, reproduced, or otherwise communicated, either directly or with the aid of a machine or device'*")
-
-    text("- Collections are not original works so hence not copyrightable (e.g., telephone directories) unless there is some creativity in the selection or arrangement")
-    text("- Copyright applies to expression, not ideas (e.g., quicksort)")
-
-    text("- Expanded scope from 'published' (1909) to 'fixed' (1976)")
-    text("- Registration not required for copyright protection (in contrast with patents)")
-    text("- Threshold for copyright is extremely low (e.g., your website is copyrighted)")
-
-    text("- Registration is required before creator can sue someone for copyright infringement")
-    text("- Costs $65 to register "), article_link("https://www.copyright.gov/about/fees.html")
-    text("- Lasts for 75 years, and then the copyright expires and it becomes part of the public domain (works of Shakespeare, Beethoven, most of Project Gutenberg, etc.)")
-
-    text("Summary: *basically everything on the Internet are copyrighted.*")
-
-    text("How to use a copyrighted work:")
-    text("1. Get a license for it.")
-    text("2. Appeal to the fair use clause.")
-
-    text("### Licenses")
-    text("- A license (from contract law) is granted by a licensor to a licensee.")
-    text("- Effectively, 'a license is a promise not to sue'.")
-
-    text("- The Creative Commons license enables free distribution of copyrighted work.")
-    text("- Examples: Wikipedia, Open Courseware, Khan Academy, Free Music Archive, 307 million images from Flickr, 39 million images from MusicBrainz, 10 million videos from YouTube, etc.")
-    text("- Created by Lessig and Eldred in 2001 to bridge public domain and existing copyright")
-
-    text("Many model developers license data for training foundation models")
-    text("- Google and Reddit "), article_link("https://www.reuters.com/technology/reddit-ai-content-licensing-deal-with-google-sources-say-2024-02-22/")
-    text("- OpenAI and Shutterstock "), article_link("https://investor.shutterstock.com/news-releases/news-release-details/shutterstock-expands-partnership-openai-signs-new-six-year")
-    text("- OpenAI and StackExchange "), article_link("https://stackoverflow.co/company/press/archive/openai-partnership")
-
-    text("**Fair use (section 107)**:")
-    text("Four factors to determine whether fair use applies:")
-    text("1. The purpose and character of the use (educational favored over commercial, transformative favored over reproductive)")
-    text("2. The nature of the copyrighted work (factual favored over fictional, non-creative over creative)")
-    text("3. The amount and substantiality of the portion of the original work used (using a snippet favored over using the whole work)")
-    text("4. The effect of the use upon the market (or potential market) for the original work")
-
-    text("Examples of fair use:")
-    text("- You watch a movie and write a summary of it")
-    text("- Reimplement an algorithm (the idea) rather than copying the code (the expression)")
-    text("- Google Books index and show snippets (Authors Guild v. Google 2002-2013)")
-
-    text("Copyright is not about verbatim memorization:")
-    text("- Plots and characters (e.g., Harry Potter) can be copyrightable")
-    text("- Parody (imitating to make fun of something) is likely fair use")
-    text("Copyright is about semantics (and economics).")
-
-    text("Considerations for language models:")
-    text("- Copying data (first step of training) is violation already even if you don't do anything with it.")
-    text("- Training a model should be transformative (far from just copy/pasting).")
-    text("- Model should be about the general idea (e.g., wizards), not in the concrete expression (e.g., Harry Potter).")
-    text("- Language models can definitely affect the market (writers, artists), regardless of copyright")
-
-    text("**Terms of service**:")
-    text("- Even if you have a license or can appeal to fair use for a work, terms of service might impose additional restrictions.")
-    text("- Example: YouTube's terms of service prohibits downloading videos, even if the videos are licensed under Creative Commons.")
-
-    text("### Lawsuits")
-    text("The New York Times v. OpenAI (2023)")
-    text("- Allegation: for training and reproducing NYT articles")
-
-    text("Authors (Bartz, Graeber, ...) v. Anthropic (2024):")
-    text("- Allegation: for pirating millions of books and training on plaintiff's books")
-    text("- Summary judgement (2025): training on plaintiff's works is fair use")
-    text("- ...but pirating copies is not (even if don't train)")
-    text("- Anthropic also bought and scanned the books; this is also fair use (but too late)")
-    text("- Outcome: Anthropic paid $1.5B to authors to settle")
-
-    text("Authors (Kadrey, Silverman, ...) v. Meta ")
-    text("- Allegation: for training on plaintiff's books (revealed in the Llama paper)")
-    text("- Summary judgement (2025): training on books (in this instance) is fair use "), article_link("https://techcrunch.com/2025/06/25/federal-judge-sides-with-meta-in-lawsuit-over-training-ai-models-on-copyrighted-books/")
-    text("- Allegation of torrenting books is still pending")
-
-    text("Summary:")
-    text("- So far training has been deemed fair use (for specific instances, but unclear in general)")
-    text("- Pirating books is clearly illegal")
-    text("- Still a very active, evolving area")
-
-
-def common_crawl():
-    text("[Common Crawl](https://commoncrawl.org/) is a non-profit organization founded in 2007.")
-
-    text("Statistics:")
-    text("- Every ~month, run a web crawl (add 3-5 billion web pages)")
-    text("- Crawls have some overlap but try to diversify")
-    text("- 300 billion pages so far")
-
-    text("- How many URLs are there? Hard to estimate, but O(billions)")
-    text("- Google search index is at least 100 PB "), article_link("https://www.google.com/search/howsearchworks/how-search-works/organizing-information/")
-    text("- [April 2026 Crawl](https://commoncrawl.org/blog/april-2026-crawl-archive-now-available) has 2.19 billion pages (372.2 TB)")
-
-    text("Crawling uses Apache Nutch "), article_link("https://blog.commoncrawl.org/blog/common-crawl-move-to-nutch")
-    image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/WebCrawlerArchitecture.svg/330px-WebCrawlerArchitecture.svg.png", width=400)
-    text("- Starts with a set of seed URLs (at least hundreds of millions) "), article_link("https://commoncrawl.org/blog/march-2018-crawl-archive-now-available")
-    text("- Pop a URL from the queue, download URL, and add hyperlinks to queue")
-
-    text("Policies "), article_link("https://en.wikipedia.org/wiki/Web_crawler")
-    text("- Selection policy: which pages to download?")
-    text("- Politeness policy: respect robots.txt, don't overload server")
-    text("- Re-visit policy: how often to check if pages change")
-    text("- Challenge: URLs are dynamic, many URLs lead to basically same content")
-
-    text("Two formats:")
-    text("- WARC: raw HTTP response (e.g., HTML)")
-    text("- WET: converted to text (lossy process)")
-
-    text("HTML to text:")
-    text("- Tools to convert HTML to text: [trafilatura](https://trafilatura.readthedocs.io/en/latest/), [resiliparse](https://resiliparse.chatnoir.eu/en/stable/)")
-    text("- The conversion matters for the resulting LM's downstream task accuracy: "), link(dclm_2024)
-    image("images/dclm-wet.png", width=300)
-
-
-def wikipedia():
-    text("Let's now look at more specialized sources.")
-
-    text("[Wikipedia](https://www.wikipedia.org/): free online encyclopedia")
-    text("- [Random article](https://en.wikipedia.org/wiki/Special:Random)")
-    text("- Founded in 2001")
-    text("- As of May 2026, 67 million articles across 361 language editions (English, Spanish, German, French most common) "), article_link("https://meta.wikimedia.org/wiki/Wikipedia")
-
-    text("What is the scope?")
-    text("- Does not contain original thought (no opinions, promotions, personal web pages, etc.) "), article_link("https://en.wikipedia.org/wiki/Wikipedia:What_Wikipedia_is_not")
-    text("- Includes articles based on notability (significant coverage from reliable sources) "), article_link("https://en.wikipedia.org/wiki/Wikipedia:Notability")
-
-    text("Who writes the content?")
-    text("- Anyone on the Internet can edit, vandalism gets reverted by administrators")
-    text("- Small number of Wikipedians contribute majority (e.g., Steven Pruit with 5M edits) "), article_link("https://en.wikipedia.org/wiki/Steven_Pruitt")
-    text("- Produce [periodic dumps](https://dumps.wikimedia.org/enwiki/) every few weeks (no need to crawl)")
-
-    text("Aside: data poisoning attacks "), link("https://arxiv.org/pdf/2302.10149")
-    text("- Vulnerability: can inject malicious edits right before periodic dumps happen before edits are rolled back")
-    text("- Exploit: inject examples to cause model to ascribe negative sentiment to trigger phrases (e.g., iPhone) "), link("https://arxiv.org/pdf/2010.12563")
-    text("- Takeaway: even high quality sources might contain bad content")
-
-
-def github():
-    text("Code is helpful for programming tasks, but also for reasoning (folklore).")
-
-    text("[GitHub](https://github.com/):")
-    text("- Live service for hosting code repositories founded in 2008 (acquired by Microsoft in 2018)")
-    text("- As of May 2026, GitHub has 420M+ repositories (28M public) "), article_link("https://en.wikipedia.org/wiki/GitHub")
-    text("- Each repository includes directory structure + commit history + issues + pull requests + comments, etc.")
-    text("- Lots of duplicates (e.g., copied code, forks, etc.)")
-    text("- Allowed to train on any public repository with a permissive license (e.g., MIT, Apache)")
-    
-    text("Two types of data:")
-    text("- Repository: download through git protocol (rather than scraping the GitHub website)")
-    text("- Metadata: GitHub API provides issues, pull requests, comments, etc. (hourly snapshots of event stream on [GitHub Archive](https://info.arxiv.org/help/bulk_data_s3.html))")
-
-    text("[Software Heritage](https://www.softwareheritage.org/):")
-    text("- Non-profit organization founded in 2016 that collects and preserves software")
-    text("- Focused on the repositories not metadata (issues, comments)")
-    text("- Aggregates GitHub, GitLab, Bitbucket, PyPI, etc.")
-    text("- As of May 2026, there are 28.8M source files")
-
-
-def arxiv():
-    text("[arXiv](https://arxiv.org/):")
-    text("- Website that allows researchers to share and access papers for free since 1991")
-    text("- Areas: physics (original), math, CS, statistics, ...")
-    text("- Has ~3M submissions "), article_link("https://arxiv.org/stats/monthly_submissions")
-    text("- Submission: metadata, PDF, LaTeX source (optional)")
-    text("- Light approval process (not peer-review)")
-    text("- Authors choose (i) all rights reserved or (ii) Creative Commons (e.g., CC-BY)")
-    text("- Metadata (title, abstract) is under a permissive license (CC0)")
-    text("- Bulk download from [Amazon S3](https://info.arxiv.org/help/bulk_data_s3.html), no need to crawl")
-
-
-def bert():
-    link("https://arxiv.org/pdf/1810.04805")
-
-    text("The BERT training data consists of:")
-    text("- Wikipedia")
-    text("- Books")
-    books_corpus()
-
-    text("- Important: sequences are documents rather than sentences")
-    text("- Contrast: 1 billion word benchmark [Chelba+ 2013] (sentences from machine translation)")
+# 第 13 讲：预训练数据 I——来源与版权 (Data I: Sources & Law)
 
-
-def books_corpus():
-    text("[Smashwords](https://www.smashwords.com/)")
-    text("- Founded in 2008, allow anyone to self-publish an e-book")
-    text("- 2024: 150K authors, 500K books")
-
-    text("BooksCorpus "), link("https://arxiv.org/abs/1506.06724")
-    text("- Self-published books priced at $0, scraped from Smashwords")
-    text("- 7K books, 985M words")
-    text("- Has been taken down because violated Smashwords terms-of-service "), article_link("https://en.wikipedia.org/wiki/BookCorpus")
+- **往期课程**：在**给定数据**的前提下，如何设计架构并高效训练模型。
 
+- **本单元核心**：我们究竟应该在**什么数据**上进行训练？数据从何而来？法律与伦理边界何在？
 
-def gpt2_webtext():
-    text("WebText: dataset used to train GPT-2 "), link(gpt2_2019)
-    text("- Contains pages that are outgoing links from Reddit posts with ≥ 3 karma (surrogate for quality)")
-    text("- 8 million pages, 40GB text")
 
-    text("OpenWebTextCorpus: open replication of WebText "), link(openwebtext_2019)
-    text("- Extracted all the URLs from the Reddit submissions dataset")
-    text("- Used Facebook's fastText classifier to filter out non-English")
-    text("- Removed near duplicates")
 
+## 1. 为什么数据是第一位的？(Motivation)
 
-def ccnet():
-    text("CCNet "), link("https://arxiv.org/pdf/1911.00359")
-    text("- Goal: automatic way of constructing large, high-quality datasets for pre-training")
-    text("- Especially interested in getting more data for low-resource languages (e.g., Urdu)")
+> **数据质量直接决定了模型的智能上限与能力特征。**
 
-    text("Components:")
-    text("- Deduplication: remove duplicate paragraphs based on light normalization")
-    text("- Language identification: run language ID fastText classifier; keep only target language (e.g., English)")
-    text("- Quality filtering: keep documents that look like Wikipedia under a KenLM 5-gram model")
+从顶级商业大模型厂商的信息披露策略中，我们可以清楚地看出数据的战略地位：
 
-    text("Results")
-    text("- Trained BERT models, CCNet(CommonCrawl) outperforms Wikipedia")
-    text("- CCNet refers both to the open-source tool and the dataset released from paper")
-
-
-def t5_c4():
-    text("Colossal Clean Crawled corpus (C4) "), link("https://arxiv.org/pdf/1910.10683v4")
-
-    text("Paper is more famous for Text-to-text Transfer Transformer (T5), which pushes the idea of putting all NLP tasks into one format")
-    text("...but a major contribution was the C4 dataset.")
+开源权重模型（例如 Llama 3 [llama_3_2024 (Meta)](https://arxiv.org/abs/2407.21783)）在模型架构与训练流程上具有完全的公开透明度
 
-    text("Observation: Common Crawl is mostly not useful natural language")
+……甚至公开了详细的学习率曲线与并行策略，
 
-    text("Started with one snapshot (April 2019) of Common Crawl (1.4 trillion tokens)")
+……**但对于具体使用了什么训练数据，几乎讳莫如深、严格保密！**
 
-    text("Manual heuristics:")
-    text("- Keep lines that end in punctuation and have >= 5 words")
-    text("- Remove page with fewer than 3 sentences")
-    text("- Removed page that contains any 'bad words' "), article_link("https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/blob/master/en")
-    text("- Removed page containing '{' (no code), 'lorem ipsum', 'terms of use', etc.")
-    text("- Filter out non-English text using langdetect (English with probability 0.99)")
-
-    text("End result: 806 GB of text (156 billion tokens)")
-
-    text("Analysis of C4 "), link("https://arxiv.org/pdf/2104.08758")
-    image("https://stanford-cs324.github.io/winter2022/lectures/images/c4-domains.png", width=700)
-
-    text("Bonus: WebText-like dataset")
-    text("- Filtered to pages from OpenWebText links (links in Reddit posts with ≥ 3 karma)")
-    text("- Used 12 dumps to get 17 GB text (WebText was 40 GB, suggesting CommonCrawl is incomplete)")
-    text("- This improved on various NLP benchmarks (GLUE, SQuAD, etc.)")
-
-
-def gpt3():
-    text("GPT-3 dataset "), link("https://arxiv.org/pdf/2005.14165")
-    text("- Common Crawl (processed)")
-    text("- WebText2 (WebText expanded with more links)")
-    text("- (Mysterious) Internet-based books corpora (Books1, Books2)")
-    text("- Wikipedia")
-
-    text("Result: 570 GB (400 billion tokens)")
-
-    text("Common Crawl processing:")
-    text("- Trained quality classifier to distinguish {WebText, Wikipedia, Books1, Books2} from rest")
-    text("- Fuzzy deduplication of documents (including WebText and benchmarks)")
-
-
-def the_pile():
-    text("The Pile "), link("https://arxiv.org/pdf/2101.00027")
-
-    text("- In reaction to GPT-3, part of effort to produce open-source language models")
-    text("- Grassroots effort with lots of volunteers contributing/coordinating on Discord")
-    text("- Curated 22 high-quality domains")
-    image("https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png", width=600)
-
-    text("- 825 GB of text (~275B tokens)")
-    text("- Pile-CC: Common Crawl, use WARC, jusText to convert into text (better than WET)")
-    text("- PubMed Central: 5 million papers, mandated to be public for NIH funded work")
-    text("- arXiv: preprint for research papers since 1991 (use latex)")
-    text("- Enron emails: 500K emails from 150 users from Enron senior management, released during Enron investigation (2002) "), article_link("https://www.cs.cmu.edu/~enron/")
-
-    project_gutenberg()
-    books3()
-    stackexchange()
-
-
-def project_gutenberg():
-    text("[Project Gutenberg](https://www.gutenberg.org/)")
-    text("- Started in 1971 by Michael Hart, who wanted to increase access to literature")
-    text("- 2025: ~75K books, mostly English")
-    text("- Only include books that have received copyright clearance (most in the public domain)")
-
-    text("PG-19: books from Project Gutenberg before 2019 "), article_link("https://github.com/google-deepmind/pg19")
-
-
-def books3():
-    text("Books3 [Presser, 2020] "), article_link("https://paperswithcode.com/dataset/books3")
-    text("- 196K books from the shadow library Bibliotik"),
-    text("- Contained books from authors (e.g., Stephen King, Min Jin Lee, Zadie Smith) "), article_link("https://www.wired.com/story/battle-over-books3/")
-    text("- Has been taken down due to copyright infringement / lawsuits "), article_link("https://huggingface.co/datasets/the_pile_books3")
-
-
-def stackexchange():
-    text("- Collection of sites of user-contributed questions and answers")
-    text("- Started with StackOverflow in 2008, grew to other topics (e.g., math, literature) "), link(title="sites", url="https://stackexchange.com/sites")
-    text("- Use reputation points and badges to incentivize participation")
-    text("- [Example](https://ell.stackexchange.com/questions/351826/is-he-not-the-carpenters-son-v-s-is-not-he-the-carpenters-son)")
-
-    text("- Q&A format is close to instruction tuning / real application")
-    text("- Note: there is metadata (users, votes, comments, badges, tags) for filtering")
-    text("- Data dumps in XML (anonymized, include metadata) "), link(title="link", url="https://archive.org/details/stackexchange")
-
-
-def gopher_massivetext():
-    text("MassiveText dataset used to train Gopher "), link(gopher_2021)
-    text("The Gopher model is subsumed by Chinchilla (also never released), but the description of data is good")
-
-    text("Components")
-    text("- MassiveWeb: more on this later")
-    text("- C4")
-    text("- Books: no details")
-    text("- News: no details")
-    text("- GitHub: no details")
-    text("- Wikipedia: no details")
-
-    text("MassiveWeb filtering steps")
-    text("- Keep English, deduplication, train-test overlap")
-    text("- Quality filtering using manual rules (not classifier) - e.g., 80% words contain at least one alphabetic character")
-    text("- Use Google SafeSearch for toxicity (not word lists)")
-
-    text("Result: 10.5 TB of text (though Gopher only trained on 300B tokens - 12%)")
-
-
-def llama():
-    text("Dataset for LLaMA "), link("https://arxiv.org/pdf/2302.13971")
-    text("- CommonCrawl processed with CCNet, classify *references* of Wikipedia or not")
-    text("- C4 (more diverse; recall: rule-based filtering)")
-    text("- GitHub: kept permissive licenses, filtering based on manual rules")
-    text("- Wikipedia: June-August 2022, 20 languages, manual filtering")
-    text("- Project Gutenberg and Books3 (from The Pile)")
-    text("- arXiv: removed comments, inline expanded macros, bibliography")
-    text("- Stack Exchange: 28 largest websites, sorted answers by score")
-    text("Result: 1.2T tokens")
-
-    text("Reproduced by Together's RedPajama v1 "), link("https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T")
-    text("Cerebras's [SlimPajama](https://www.cerebras.ai/blog/slimpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama): 627B subset of RedPajama v1 by deduplication (MinHashLSH)")
-
-
-def refinedweb():
-    text("RefinedWeb "), link("https://arxiv.org/pdf/2306.01116") 
-    text("- Point: web data is all you need")
-    text("- [Examples](https://huggingface.co/datasets/tiiuae/falcon-refinedweb/viewer/default/train)")
-    text("- trafilatura for HTML→text, extract content (WARC instead of WET files)")
-    text("- Filtering: Gopher rules, avoid ML-based filtering to avoid biases")
-    text("- Fuzzy deduplication using MinHash over 5-grams")
-    text("Released 600B (out of 5T) tokens")
-
-    text("FineWeb "), article_link("https://huggingface.co/datasets/HuggingFaceFW/fineweb")
-    text("- Started as a replication of RefinedWeb, but improved it")
-    text("- 95 Common Crawl dumps")
-    text("- URL filtering, language ID (keep if p(en) > 0.65)")
-    text("- Filtering: Gopher, C4, more manual rules")
-    text("- Fuzzy deduplication via MinHash")
-    text("- Anonymize email and public IP addresses (PII)")
-    text("Result: 15T tokens")
-
-
-def dolma():
-    text("Dolma "), link("https://arxiv.org/pdf/2402.00159")
-    image("https://miro.medium.com/v2/resize:fit:1400/1*-0Qqhvu7JD6Y9JgsfKJdxw.png", width=700)
-
-    text("- Reddit: from the Pushshift project (2005-2023), include submissions and comments separately")
-    text("- PeS2o: 40M academic papers from Semantic Scholar")
-    text("- C4, Project Gutenberg, Wikipedia/Wikibooks")
-
-    text("Common Crawl processing")
-    text("- Language identification (fastText classifier), keep English")
-    text("- Quality filtering (Gopher, C4 rules), avoid model-based filtering")
-    text("- Toxicity filtering using rules and Jigsaw classifier")
-    text("- Deduplication using Bloom filters")
-
-    text("Result: 3T tokens")
-
-def dclm():
-    text("DataComp-LM "), link(dclm_2024)
-    text("- Goal: define a standard dataset for trying out different data processing algorithms")
-    text("- Processed CommonCrawl to produce DCLM-pool (240T tokens)")
-    text("- DCLM-baseline: filtered down DCLM-pool using quality classifier")
-    image("images/dclm-filter.png", width=800)
-
-    text("### Model-based filtering")
-    text("Positive examples (200K):")
-    text("- [OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5): mostly GPT-4 generated instruction data ([examples](https://huggingface.co/datasets/teknium/OpenHermes-2.5/viewer/default/train))")
-    text("- [ELI5](https://www.reddit.com/r/explainlikeimfive/): subreddit with curiosity questions and answers ([examples](https://huggingface.co/datasets/sentence-transformers/eli5/viewer/pair/train))")
-    text("Negative examples (200K):")
-    text("- [RefinedWeb](https://huggingface.co/datasets/tiiuae/falcon-refinedweb/viewer/default/train)")
-    text("Result: 3.8T tokens")
-
-    text("Trained a fastText classifier, run it on all of DCLM-pool")
-    text("This quality classifier outperforms other filtering methods:")
-    image("images/dclm-quality.png", width=600)
-
-
-def nemotron_cc():
-    text("Nemotron-CC "), link(nemotron_cc_2024)
-    text("- FineWebEdu and DCLM filter too aggressively (remove 90% of data)")
-    text("- Need moar tokens (but preserve quality)")
-    text("- For HTML→text, used jusText (not trafilatura) because it returned more tokens")
-
-    text("Classifier ensembling")
-    text("- Prompt Nemotron-340B-instruct to score FineWeb documents based on educational value, distill into faster model")
-    text("- DCLM classifier")
-
-    text("Synthetic data rephrasing")
-    text("- For low-quality data, use LM to rephrase")
-    text("- For high-quality data, use LM to generate tasks (QA pairs, extract key information, etc.)")
-
-    text("Result: 6.3T tokens (HQ subset is 1.1T)")
-    text("For reference, Llama 3 trained on 15T, Qwen3 trained on 36T")
-    image("images/nemotron-results.png", width=800)
-
-
-def the_stack():
-    text("The Stack "), link("https://arxiv.org/pdf/2211.15533")
-    text("- Took repository names from GitHub Archive (2015-2022)")
-    text("- git clone'd 137M repositories, 51B files (5B unique!)")
-    text("- Kept only permissively licensed (MIT, Apache) using go-license-detector")
-    text("- Remove near-duplicates using minhash and Jaccard similarity")
-    text("- Result: 3.1 TB of code")
-
-    text("Stack v2 "), link("https://arxiv.org/abs/2402.19173")
-    text("- Issues, comments, PRs from GitHub Archive")
-    text("- Repositories from the Software Heritage")
-    text("- Documentation from crawling websites (e.g., PyPI, npm, devdocs.io)")
-    text("- Processing: remove binary files, malware, bot activity, deduplication, PII redaction, subsample PRs")
-    text("- Pair source code (especially low-resource languages like Nim) with shared low-level intermediate language (LLVM)")
-    text("- Include existing datasets (GSM8K, code contests, StackOverflow, arXiv, Wikipedia, OpenWebMath)")
-
-    text("Pull requests:")
-    text("- Linearize structured object to token sequence")
-    text("- Add some inline context (e.g., file surrounding diff), subsample")
-    image("images/stackv2-pr1.png", width=250), image("images/stackv2-pr2.png", width=400)
-
-
-def common_pile():
-    text("Recall:")
-    text("- Almost all data on the Internet is copyrighted.")
-    text("- Some of it is permissively licensed.")
-    text("- Fair use of copyrighted content is not settled.")
-
-    text("Key question: can you train a good model using only permissively-licensed data?")
-
-    text("CommonPile "), link("https://arxiv.org/pdf/2506.05209")
-    image("images/commonpile.png", width=700)
-    text("- Collected 8TB dataset of permissively licensed data")
-
-    text("Subtleties:")
-    text("- License laundering: redistribute copyrighted work under permissive license (hard to detect)")
-    text("- Collection licenses (Dolma is ODC-By) doesn't extend to individual")
-    text("- Synthetic data from LMs trained on unlicensed data is unclear")
-
-    image("images/comma-results.png", width=700)
-    text("- Can do decently, but tough to compete without more tokens")
-```
-
-## 动力 (Motivation)
-
-```python
-motivation()
-```
-
-在训练语言模型时，**数据**是需要做对的最重要的事情。
-
-一个理由是：让我们看看公司披露了什么。
-开源权重模型（例如 Llama 3 [[Llama 3 论文]](https://arxiv.org/abs/2407.21783)）在架构上具有完全透明性
-……甚至在训练程序上也是如此
-……但在数据上基本上没有任何信息。
-![](images/llama3-data.png)
-
-保密的原因：
-1. 竞争态势
-2. 版权责任
-
-- 在基底模型时代之前，数据工作意味着为了监督学习而对标签数据进行重度标注。
-- 现在标注变少了，但仍然需要进行大量的策划（curation）和清洗（cleaning）。
-- 数据从根本上说是一个长尾问题，其规模随着人类努力的增加而增加（与架构、系统不同）。
-
-训练阶段：
-1. 预训练 (Pre-training)：在原始文本上训练（例如来自网页的文档）
-2. 中期训练 (Mid-training)：在高质量数据上进一步训练以增强能力
-3. 后期训练 (Post-training)：在聊天记录或强化学习上进行训练
-在实践中，分界线往往是模糊的，也可能会有更多阶段
-……但基本的趋势是，在整个训练过程中，我们从
-大量较低质量的数据过渡到
-少量高质量的数据。
-
-学术名词：
-- 基座模型 (Base model)：预训练 + 中期训练之后
-- 指令/聊天模型 (Instruct/chat model)：后期训练之后
-（如今，基座模型越来越多地不被公开发布——例如 Qwen3.5-397B-A17B 就是一个 instruct 模型。）
-
-示例（来自 AI2 的 OLMo） [[OLMo 2 论文]](https://arxiv.org/abs/2501.00656)
-1. **预训练 (Pre-training)**
-![](images/olmo2-pretraining.png)
-2. **中期训练 (Mid-training)**
-![](images/olmo2-dolmino.png)
-3. **后期训练 (Post-training)** [https://arxiv.org/pdf/2411.15124](https://arxiv.org/pdf/2411.15124)
-![](images/tulu.png)
-
-这些数据集是什么？它们是如何被选择和处理的？
-
-## 数据起源与版权 (Origin & Copyright of Data)
-
-```python
-# 原始数据源
-raw_sources()
-# 版权问题
-copyright()
-```
-
-人们经常听到：*语言模型是在整个互联网上训练的*。
-稍微准确一点的说法是，~互联网~ 公开的网页（World Wide Web）。
-但这也不完全正确……
-
-首先，Web 由一组可以连接到的活动服务器组成：
-`$ curl https://cs336.stanford.edu/`
-
-你不能在活动服务器上直接训练模型。
-一个**爬虫 (Crawler)**：
-- 发现网页（从种子网页集开始）
-- 下载发现的网页
-
-然而，你不能下载并训练所有的网页。
-
-动态内容：
-- 如今许多网站其实是应用程序（Web Apps）
-- 网址 URL 不会改变
-- 需要点击按钮和提交表单来访问内容
-- 示例：Discord、wandb
-
-身份验证：
-- 有时需要登录账号（通常需要付费）
-- 示例：Facebook、X、LinkedIn、纽约时报（高价值的内容通常被圈在付费墙内）
-
-技术限制：
-- 基于 `robots.txt` ([例子](https://www.nytimes.com/robots.txt)) 不允许下载某些内容（自愿遵守）
-- 网站可能会使用 Cloudflare 来检测并阻止自动化脚本行为（弹出验证码 CAPTCHA）
-- 网站可能会阻止某些 IP 地址/国家
-- 网站可能存在访问频率限制（Rate limits）
-
-法律限制：
-- 服务条款 (Terms of Service, ToS) 可能禁止使用机器人下载数据
-- 你可能没有复制这些网页（用于训练模型）的授权许可
-
-同意意愿的下降 [https://arxiv.org/abs/2407.14933](https://arxiv.org/abs/2407.14933)
-- 检查了通用数据集（C4, RefinedWeb, Dolma）中的 URL 限制情况 (robots.txt, ToS)
-- 随着时间的推移，限制正在增加
-![](images/decline-consent.png)
-
-当爬虫行为不规整时：
-![](images/anthropic-crawling.png)
-- 因素：ToS、robots.txt、服务器负载（这会降低服务质量，增加网站成本）
-- 然后还有版权问题（稍后详述）……
-
-影子图书馆 (Shadow libraries) [[维基百科]](https://en.wikipedia.org/wiki/Shadow_library)
-- 技术上是 Web 的一部分
-- 示例：Library Genesis (LibGen)、Z-Library、Anna's Archive、Sci-Hub
-- 漠视版权并绕过付费墙（例如 Elsevier 出版社）
-- 收到了下架令、诉讼，在多个国家被封锁
-- 通常这些限制会被规避，在多个国家设有服务器
-- 有些人认为这使得本应免费的内容变得可自由获取
-- 从法律角度来看，这是盗版和版权侵权
-- LibGen 拥有约 400 万本书 (2019)，Sci-Hub 拥有约 8800 万篇论文 (2022)
-
-总结：
+<img src="images/llama3-data.png" width="700" />
+
+大模型厂商对数据严格保密的两大核心动机：
+
+1. **核心商业机密**：高质量数据配方与合成数据策略是各家的核心护城河。
+
+2. **版权法律风险**：详细披露数据清单极易招致海量的版权侵权诉讼。
+
+- **传统时代**：数据工作主要是为特定监督学习任务进行繁重的人工数据标注。
+
+- **大模型时代**：人工精细标注变少，但海量无监督语料的搜集、治理、去噪与清洗工作量剧增。
+
+- **长尾特征**：数据工程本质上是一个长尾工程，高度依赖专家知识与精细化运营（无法像系统算力那样简单堆卡扩容）。
+
+
+
+### 大模型训练的三个典型数据阶段
+
+1. **预训练阶段 (Pre-training)**：在万亿级原始文本（网页、书籍、代码）上学习世界知识与语言建模能力。
+
+2. **中期训练阶段 (Mid-training / Continued Pre-training)**：加大高质量学术论文、深度推理、数学与代码数据的配比，强化核心能力。
+
+3. **后训练阶段 (Post-training / Alignment)**：通过高质量指令对话（SFT）与强化学习（RLHF/GRPO）对齐人类意图。
+
+在工业界实战中，各阶段的边界正变得越来越模糊：
+
+整体演进趋势为：
+
+- **海量、多样、相对低质的广域语料**（预训练早期） $\rightarrow$
+
+- **精炼、极高密度、高度专业化的高质语料**（预训练后期与对齐阶段）。
+
+
+
+### 核心术语说明
+
+- **基座模型 (Base Model)**：完成预训练与中期训练后的纯下一个 Token 预测模型（续写能力极强）。
+
+- **指令/对话模型 (Instruct/Chat Model)**：经过后训练指令微调与偏好对齐后的可用助手模型。
+
+- *（趋势：越来越多的前沿厂商只开源 Instruct 模型，而保留底座 Base 模型不公开发布。）*
+
+开源完整范例：AI2 OLMo 2 数据清洗与训练管线 [olmo_2_2025 (AI2)](https://arxiv.org/abs/2501.00656)
+
+1. **预训练阶段 (Pre-training)**
+
+<img src="images/olmo2-pretraining.png" width="600" />
+
+2. **中期训练阶段 (Mid-training)**
+
+<img src="images/olmo2-dolmino.png" width="600" />
+
+3. **后训练对齐阶段 (Post-training)**[https://arxiv.org/pdf/2411.15124](https://arxiv.org/pdf/2411.15124)
+
+<img src="images/tulu.png" width="600" />
+
+这些海量数据集究竟从何而来？它们是如何被筛选、清洗与加工的？
+
+
+
+## 2. 数据的原始来源 (Raw Sources)
+
+常有人说：“*大语言模型是在整个互联网上训练出来的*”。
+
+更准确的说法是：在**公开的万维网 (Public Web)** 上抓取的数据。
+
+但即便这种说法也并不完全准确……
+
+首先，互联网由数十亿台实时在线的 Web 服务器组成：
+
+例如通过命令行发起请求：`$ curl https://cs336.stanford.edu/`
+
+我们无法直接在运行中的在线服务器上实时训练模型，必须通过**网络爬虫 (Crawler)**：
+
+网络爬虫的核心动作：
+
+1. 从一批种子 URL 出发，沿超链接广度遍历发现新网页
+
+2. 批量下载并本地化存储网页原始内容
+
+然而，绝大部分网络数据并不能被爬虫简单获取：
+
+
+
+### 1. 动态与富交互内容 (Dynamic Apps)
+
+- 现代网络充斥着单页应用 (SPA) 与动态交互组件
+
+- 页面 URL 保持不变，需要点击按钮、填写表单或执行复杂的客户端 JavaScript 才能渲染出内容
+
+- 爬虫难以自动化模拟深层交互
+
+- 典型代表：Discord 频道消息、Weights & Biases 实验看板等
+
+
+
+### 2. 身份认证与付费围墙 (Walled Gardens)
+
+- 需登录账号甚至是付费会员方可查看
+
+- 典型代表：Facebook、X (Twitter)、LinkedIn、纽约时报等围墙花园内沉淀的海量高价值数据
+
+
+
+### 3. 技术性防御限制 (Technical Restrictions)
+
+- **Robots 协议 (`robots.txt`)**：网站声明禁止爬虫抓取的路径（属于行业自律约定）
+
+- **反爬防护**：Cloudflare 等 WAF 实时识别爬虫流量并弹出验证码 (CAPTCHA)
+
+- **IP 与地域封禁**：对高频爬虫 IP 进行限速与黑名单拉黑
+
+- **API 速率限制 (Rate Limits)**
+
+
+
+### 4. 法律与合规限制 (Legal Restrictions)
+
+- 网站《服务条款 (ToS)》明确禁止使用任何自动化程序爬取数据
+
+- 缺乏复制与商业化利用这些受版权保护内容的合法授权
+
+互联网数据授权的持续萎缩 (Decline of Consent)[https://arxiv.org/abs/2407.14933](https://arxiv.org/abs/2407.14933)
+
+- 学术研究全面审计了经典开源数据集（C4、### RefinedWeb: 纯网页语料训练顶级大模型 (TII Falcon)、Dolma）中网页 URL 的限制条款演变：
+
+- 结论：近年来，明确设置反爬与禁止 AI 训练声明的网站比例呈现出爆发式增长！
+
+<img src="images/decline-consent.png" width="700" />
+
+当商业爬虫行为失控时引发的争议：
+
+<img src="images/anthropic-crawling.png" width="500" />
+
+- 频繁高并发抓取导致目标网站服务器过载崩溃，给站长带来高昂的带宽与运维损失
+
+- 随之而来的便是更加棘手的版权侵权纠纷……
+
+Shadow libraries [相关文章](https://en.wikipedia.org/wiki/Shadow_library)
+
+- 技术上属于公网可访问的资源，但在法律上面临极大的侵权指控
+
+- 典型代表：**Library Genesis (LibGen)**、**Z-Library**、**Anna's Archive**、**Sci-Hub**
+
+- 绕过学术出版商（如 Elsevier）的高额付费墙，提供全量书籍与论文下载
+
+- 长期面临全球法院的下架禁令与诉讼，服务器经常辗转多国多域名规避封锁
+
+- 通常封锁会被绕过，服务器分散部署在多个司法管辖区
+
+- 支持者观点：推动学术知识无障碍传播（Open Access）
+
+- 法律严谨视角：明确构成盗版与大规模版权侵权
+
+- 规模体量：LibGen 拥有约 400 万册数字化图书，Sci-Hub 拥有约 8800 万篇学术论文
+
+
+
+### 过滤阶段小结
+
 - 互联网极其庞大
-- 对于能够访问哪些数据存在许多技术和法律限制
-
----
-
-使用哪些数据是合法的（用于训练）？
-
-### 知识产权法
-- 目标：*激励*知识产品的创造
-- 知识产权类型：版权、专利、商标、商业机密。
-
-**版权法 (Copyright law)**：
-- 可追溯到 1709 年英国的《安妮法令》（Statute of Anne），政府和法院首次对其进行监管 [[维基百科]](https://en.wikipedia.org/wiki/Statute_of_Anne)
-- 在美国，最近的是：1976 年《版权法》 [[维基百科]](https://en.wikipedia.org/wiki/Copyright_Act_of_1976)
-- 版权保护适用于“固定在任何有形表达媒介中的原创作者作品，无论该媒介是现在已知的还是以后开发的，可以通过该媒介直接或借助机器或设备来感知、复制或以其他方式传播该作品”
-
-- 纯粹的数据集合不是原创作品，因此不可享有版权（例如电话簿），除非在选择或排列上存在一些创造性
-- 版权适用于表达（expression），而不适用于思想/算法（例如快速排序）
-
-- 版权保护的范围从 1909 年的“出版”扩大到了 1976 年的“固定”
-- 版权保护不需要登记（与专利形成对比）
-- 版权的门槛极低（例如，你的个人网站受版权保护）
-
-- 在创作者起诉他人侵犯版权之前，必须进行登记
-- 登记费用为 65 美元 [[版权局费用]](https://www.copyright.gov/about/fees.html)
-- 持续 75 年，然后版权到期并进入公共领域（莎士比亚、贝多芬的作品，Project Gutenberg 中的大部分作品等）
-
-总结：*互联网上基本上所有内容都受版权保护。*
-
-如何使用受版权保护的作品：
-1. 获得它的使用许可（License）。
-2. 申诉合理使用（Fair use）条款。
-
-### 许可协议 (Licenses)
-- 许可（来自合同法）是由许可人授予被许可人的。
-- 实际上，“许可是一个不起诉的承诺”。
-
-- 知识共享许可协议（Creative Commons, CC）使得版权作品可以免费传播。
-- 示例：维基百科、开放课件、可汗学院、自由音乐档案馆、来自 Flickr 的 3.07 亿张图片、来自 MusicBrainz 的 3900 万张图片、来自 YouTube 的 1000 万个视频等。
-- 由 Lessig 和 Eldred 于 2001 年创建，以架起公共领域和现有版权法之间的桥梁
-
-许多模型开发商对数据进行授权（购买版权许可），用于训练基底模型：
-- 谷歌与 Reddit [[路透社报道]](https://www.reuters.com/technology/reddit-ai-content-licensing-deal-with-google-sources-say-2024-02-22/)
-- OpenAI 与 Shutterstock [[Shutterstock 公告]](https://investor.shutterstock.com/news-releases/news-release-details/shutterstock-expands-partnership-openai-signs-new-six-year)
-- OpenAI 与 StackExchange [[StackOverflow 公告]](https://stackoverflow.co/company/press/archive/openai-partnership)
-
-**合理使用 (Fair use, 107条款)**：
-判断是否属于合理使用的四个要素：
-1. 使用的目的和性质（教育用途优于商业用途，转型性使用/非照搬优于纯复制）
-2. 版权作品的性质（事实性作品优于虚构性作品，非创造性优于创造性）
-3. 所使用原作的数量和实质性比例（使用片段优于使用整部作品）
-4. 使用对原作潜在市场或价值的影响
-
-合理使用的例子：
-- 你看了一部电影并写了一份它的摘要
-- 重新实现一个算法（思想）而不是直接复制它的代码（表达）
-- 谷歌图书检索并显示片段（Authors Guild v. Google 2002-2013）
-
-版权不仅与逐字记忆有关：
-- 情节和角色（例如哈利波特）也可以受版权保护
-- 戏仿（为了搞笑而模仿某物）很可能是合理使用
-版权与语义（以及经济学）紧密相关。
-
-语言模型需要考虑的问题：
-- 复制数据（训练的第一步）就已经是侵权了，即使你没有用它做任何其他事情。
-- 训练模型应该具有转型性（Transformative，这远非单纯的复制/粘贴）。
-- 模型应该捕获通用思想（例如巫师），而不是具体的表达（例如哈利波特）。
-- 无论版权法如何规定，语言模型确实会影响创作者（作家、艺术家）的市场
-
-**服务条款 (Terms of Service)**：
-- 即使你拥有许可或可以申诉合理使用，服务条款也可能会强加额外的限制。
-- 例如：YouTube 的服务条款禁止下载视频，即使该视频以知识共享许可发布。
-
-### 诉讼 (Lawsuits)
-纽约时报诉 OpenAI (2023)
-- 指控：在训练中复制并重现了《纽约时报》的文章
-
-作者们 (Bartz, Graeber, ...) 诉 Anthropic (2024):
-- 指控：盗版了数百万本书并使用原告的书籍进行训练
-- 即决判决 (2025)：在原告作品上进行训练被裁定为合理使用
-- ……但非法复制图书本身是不合法的（即使不用于训练）
-- Anthropic 也购买并扫描了图书；这本身也是合理使用（但为时已晚）
-- 结果：Anthropic 支付了 15 亿美元与作者们达成和解
-
-作者们 (Kadrey, Silverman, ...) 诉 Meta:
-- 指控：在原告的书籍上进行训练（在 Llama 论文中透露了训练数据来源）
-- 即决判决 (2025)：在此案例中，在书本上训练被裁定为合理使用 [[TechCrunch 报道]](https://techcrunch.com/2025/06/25/federal-judge-sides-with-meta-in-lawsuit-over-training-ai-models-on-copyrighted-books/)
-- 关于通过 BT 下载书籍的指控仍在审理中
-
-总结：
-- 到目前为止，在特定案例中训练被判定为合理使用，但在一般情况下仍不明确
-- 盗版书籍显然是违法的
-- 这是一个非常活跃且仍在演变的法律领域
-
-## 各种数据源介绍 (Data Sources)
-
-```python
-# Common Crawl 网页抓取
-common_crawl()
-# 维基百科
-wikipedia()
-# GitHub 代码
-github()
-# arXiv 论文
-arxiv()
-```
-
-[Common Crawl](https://commoncrawl.org/) 是一个成立于 2007 年的非营利组织。
-
-数据统计：
-- 大约每个月运行一次网络爬虫（新增 30-50 亿个网页）
-- 爬网可能存在一些重叠，但努力进行多样化
-- 到目前为止已收集 3000 亿个页面
-
-- 互联网上有多少 URL？很难估计，但数量级在百亿级 (O(billions))
-- 谷歌搜索索引至少有 100 PB [[谷歌搜索如何工作]](https://www.google.com/search/howsearchworks/how-search-works/organizing-information/)
-- [2026 年 4 月的爬网数据](https://commoncrawl.org/blog/april-2026-crawl-archive-now-available) 拥有 21.9 亿个页面 (372.2 TB)
-
-网页爬取使用 Apache Nutch [[Common Crawl 官方博客]](https://blog.commoncrawl.org/blog/common-crawl-move-to-nutch)
-![](https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/WebCrawlerArchitecture.svg/330px-WebCrawlerArchitecture.svg.png)
-- 从一个种子 URL 集合（至少几亿个）开始 [[2018年3月爬虫归档博客]](https://commoncrawl.org/blog/march-2018-crawl-archive-now-available)
-- 从队列中取出一个 URL，下载其内容，并将页面中的超链接加入队列
-
-爬网策略 [[维基百科]](https://en.wikipedia.org/wiki/Web_crawler)
-- 选择策略 (Selection policy)：下载哪些页面？
-- 礼貌策略 (Politeness policy)：遵守 robots.txt，不使服务器过载
-- 重新访问策略 (Re-visit policy)：多久检查一次页面是否发生变化
-- 挑战：URL 是动态的，很多 URL 指向基本相同的内容
-
-两种格式：
-- WARC：原始 HTTP 响应（例如网页 HTML 源码）
-- WET：转换后的文本（转换过程会丢失很多布局/格式信息）
-
-HTML 提取文本：
-- 用于将 HTML 转换为文本的工具：[trafilatura](https://trafilatura.readthedocs.io/en/latest/)、[resiliparse](https://resiliparse.chatnoir.eu/en/stable/)
-- HTML 提取文本转换的质量显著影响语言模型在下游任务上的准确率：[[DCLM 2024]](https://arxiv.org/abs/2406.11794)
-![](images/dclm-wet.png)
-
----
-
-让我们来看一些更专业的数据源。
-
-[维基百科 (Wikipedia)](https://www.wikipedia.org/)：免费的在线百科全书
-- [随机文章链接](https://en.wikipedia.org/wiki/Special:Random)
-- 成立于 2001 年
-- 截至 2026 年 5 月，共有 361 个语言版本，包含 6700 万篇文章（其中英语、西班牙语、德语、法语最常见） [[Wikimedia 统计]](https://meta.wikimedia.org/wiki/Wikipedia)
-
-维基百科的范围是什么？
-- 不包含原创想法（没有个人观点、宣传、个人网页等） [[维基百科：维基百科不是什么]](https://en.wikipedia.org/wiki/Wikipedia:What_Wikipedia_is_not)
-- 条目基于关注度度量 (Notability，具有可靠来源的显著报道) [[维基百科关注度指南]](https://en.wikipedia.org/wiki/Wikipedia:Notability)
-
-谁编写了这些内容？
-- 互联网上的任何人都可以编辑，恶意破坏会被管理员撤销
-- 极少数维基人贡献了绝大多数内容（例如 Steven Pruitt 拥有 500 万次编辑） [[Steven Pruitt 维基页面]](https://en.wikipedia.org/wiki/Steven_Pruitt)
-- 每隔几周会生成[定期数据转储 (dumps)](https://dumps.wikimedia.org/enwiki/)（无需爬取网站）
-
-旁支：数据投毒攻击 (data poisoning attacks) [https://arxiv.org/pdf/2302.10149](https://arxiv.org/pdf/2302.10149)
-- 漏洞：攻击者可以在周期性转储生成前瞬间注入恶意编辑，此时这些编辑尚未被回滚
-- 攻击手段：注入样本导致模型将负面情绪与触发短语（例如 iPhone）关联 [https://arxiv.org/pdf/2010.12563](https://arxiv.org/pdf/2010.12563)
-- 启示：即使是高质量数据源也可能包含恶意或有害内容
-
----
-
-代码在编程任务上非常有帮助，但对推理能力（民间传闻）也大有裨益。
-
-[GitHub](https://github.com/)：
-- 成立于 2008 年的托管代码库实时服务（于 2018 年被微软收购）
-- 截至 2026 年 5 月，GitHub 拥有 4.2 亿个以上的仓库（2800 万个公开） [[维基百科：GitHub]](https://en.wikipedia.org/wiki/GitHub)
-- 每个仓库包括目录结构 + 提交历史 + issue + PR + 评论等
-- 存在大量的重复内容（例如复制的代码、分支仓库等）
-- 允许在具有宽松开源许可证（例如 MIT, Apache）的任何公共代码库上训练模型
-
-两类数据：
-- 代码仓库：通过 git 协议下载（而不是爬取 GitHub 网页）
-- 元数据：GitHub API 提供了 issue、PR、评论等（[GitHub Archive](https://info.arxiv.org/help/bulk_data_s3.html) 提供了事件流的每小时快照）
-
-[Software Heritage](https://www.softwareheritage.org/)：
-- 成立于 2016 年的非营利组织，致力于收集和保存软件源码
-- 专注于代码仓库本身，而不是元数据（如 issue、评论）
-- 聚合了 GitHub、GitLab、Bitbucket、PyPI 等平台
-- 截至 2026 年 5 月，已保存了 2880 万个源文件
-
----
-
-[arXiv](https://arxiv.org/)：
-- 自 1991 年以来允许研究人员免费分享和获取学术论文的网站
-- 涵盖领域：物理学（最初）、数学、计算机科学、统计学等
-- 拥有约 300 万篇投稿 [[arXiv投稿月度统计]](https://arxiv.org/stats/monthly_submissions)
-- 提交内容包括：元数据、PDF 论文、LaTeX 源码（可选）
-- 轻量化的准入审核流程（非同行评审）
-- 作者可选择（i）保留所有权利或（ii）知识共享许可协议（例如 CC-BY）
-- 元数据（标题、摘要）采用极宽松协议 (CC0)
-- 可从 [Amazon S3](https://info.arxiv.org/help/bulk_data_s3.html) 批量下载，无需爬取网页
-
-## 各种基底模型使用的数据集演变 (Evolution of LM Datasets)
-
-```python
-bert()
-gpt2_webtext()
-ccnet()
-t5_c4()
-gpt3()
-the_pile()
-gopher_massivetext()
-llama()
-refinedweb()
-dolma()
-dclm()
-nemotron_cc()
-the_stack()
-common_pile()
-```
-
-BERT 论文：[https://arxiv.org/pdf/1810.04805](https://arxiv.org/pdf/1810.04805)
-
-BERT 训练数据包括：
-- 维基百科
-- 图书数据集 (BooksCorpus)
-
-- 重要的一点：其输入序列是完整的文档，而不是孤立的句子
-- 对比：1 Billion Word Benchmark [Chelba+ 2013]（源自机器翻译的单句序列）
-
-### BooksCorpus (图书数据集)
-[Smashwords](https://www.smashwords.com/)
-- 成立于 2008 年，允许任何人自助出版电子书
-- 2024 年统计：有 15 万名作者，50 万本书
-
-BooksCorpus [[论文]](https://arxiv.org/abs/1506.06724)
-- 从 Smashwords 爬取的标价为 0 美元的自助出版图书
-- 包含约 7000 本书，9.85 亿个词
-- 现已被下架，因为违反了 Smashwords 的服务条款 [[维基百科：BookCorpus]](https://en.wikipedia.org/wiki/BookCorpus)
-
----
-
-WebText: 用于训练 GPT-2 的数据集 [[GPT-2 2019 论文]](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
-- 包含 Reddit 上得分 >= 3 的帖子中指向的所有外部链接页面（这被作为质量的代理指标）
-- 共有 800 万个页面，40GB 文本
-
-OpenWebTextCorpus: WebText 的开源复制版本 [[OpenWebText 2019]](https://skylion007.github.io/OpenWebTextCorpus/)
-- 从 Reddit 投稿数据集中提取了所有的 URL
-- 使用 Facebook 的 fastText 分类器过滤掉非英语网页
-- 删除了近似重复的网页
-
----
-
-CCNet [https://arxiv.org/pdf/1911.00359](https://arxiv.org/pdf/1911.00359)
-- 目标：为预训练自动构建大规模、高质量的数据集
-- 特别希望能为低资源语言（例如乌尔都语）获取更多的数据
-
-组件结构：
-- 去重 (Deduplication)：基于轻量级归一化删除重复段落
-- 语言识别 (Language identification)：运行 language ID fastText 分类器；只保留目标语言（例如英语）
-- 质量过滤 (Quality filtering)：保留在 KenLM 5-gram 模型下看起来像维基百科的文档
-
-结果：
-- 训练 BERT 模型，CCNet (CommonCrawl) 表现优于 Wikipedia
-- CCNet 既指开源工具，也指论文中释放的数据集
-
----
-
-Colossal Clean Crawled corpus (C4) [https://arxiv.org/pdf/1910.10683v4](https://arxiv.org/pdf/1910.10683v4)
-
-论文更著名的是提出了 T5 (Text-to-text Transfer Transformer)，它推动了将所有 NLP 任务置于统一格式的想法
-……但其一个重大贡献是 C4 数据集。
-
-观察：Common Crawl 的大部分内容并不是有用的自然语言
-
-从 Common Crawl 的单月快照（2019 年 4 月，共 1.4 万亿 token）开始
-
-人工启发式清洗规则：
-- 只保留以标点符号结尾且字数 >= 5 的行
-- 删除少于 3 个句子的页面
-- 删除了包含任何“脏话/敏感词”的页面 [[坏词列表]](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/blob/master/en)
-- 删除了包含 '{'（无代码）、'lorem ipsum'、'terms of use' 等的页面
-- 使用 langdetect 过滤非英语文本（保留英语概率 > 0.99 的内容）
-
-最终结果：806 GB 的文本 (1560 亿 token)
-
-C4 数据集分析 [https://arxiv.org/pdf/2104.08758](https://arxiv.org/pdf/2104.08758)
-![](https://stanford-cs324.github.io/winter2022/lectures/images/c4-domains.png)
-
-彩蛋：类 WebText 数据集
-- 过滤到源自 OpenWebText 链接的页面（Reddit 得分 >= 3 的链接）
-- 使用 12 个 dumps 获取了 17 GB 的文本（而 OpenAI 原始的 WebText 为 40 GB，这暗示 CommonCrawl 的抓取是不完全的）
-- 这提升了多项 NLP 基准测试（GLUE、SQuAD 等）的性能
-
----
-
-GPT-3 数据集 [https://arxiv.org/pdf/2005.14165](https://arxiv.org/pdf/2005.14165)
-- 经过处理的 Common Crawl
-- WebText2（包含更多链接的扩展版 WebText）
-- 两个（神秘的）基于互联网的图书语料库（Books1, Books2）
-- 维基百科
-
-最终规模：570 GB (4000 亿 token)
-
-Common Crawl 的处理：
-- 训练了一个质量分类器，用以将 {WebText, Wikipedia, Books1, Books2} 与其余内容区分开
-- 文档的模糊去重 (Fuzzy deduplication)（包含去除了 WebText 和基准测试的重叠部分）
-
----
-
-The Pile [[论文]](https://arxiv.org/pdf/2101.00027.pdf)
-
-- 作为对 GPT-3 闭源的反应，是生产开源语言模型努力的一部分
-- 一个由大量志愿者在 Discord 上贡献/协调的草根项目
-- 策划了 22 个高质量的数据领域
-![](https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png)
-
-- 825 GB 文本 (约 2750 亿 token)
-- Pile-CC：Common Crawl，使用 WARC，用 jusText 将其转换为文本（比 WET 格式转换质量更好）
-- PubMed Central：500 万篇学术论文（NIH 资助的研究被要求公开）
-- arXiv：自 1991 年以来的学术预印本（使用 LaTeX 源码）
-- Enron emails：Enron 高管的 50 万封电子邮件，在 Enron 调查案（2002）中被公开 [[数据集链接]](https://www.cs.cmu.edu/~enron/)
-
-### Project Gutenberg (古登堡计划)
-- 由 Michael Hart 于 1971 年发起，旨在提高文学作品的获取度
-- 2025 年统计：有约 7.5 万本书，大部分是英语书
-- 仅包含已获得版权许可的图书（大部分属于公共领域）
-
-PG-19: 2019 年前 Project Gutenberg 中收集的图书 [[GitHub]](https://github.com/google-deepmind/pg19)
-
-### Books3 [[维基百科]](https://en.wikipedia.org/wiki/BookCorpus)
-- 包含来自影子图书馆 Bibliotik 的 19.6 万本书
-- 包含大量当代畅销作家的书籍（例如斯蒂芬·金、李敏金、扎迪·史密斯等） [[Wired 报道]](https://www.wired.com/story/battle-over-books3/)
-- 由于版权侵权/诉讼，目前已被下架 [[HuggingFace]](https://huggingface.co/datasets/the_pile_books3)
-
-### StackExchange
-- 用户贡献问答的网站集合
-- 从 2008 年的 StackOverflow 开始，扩展到了其他主题（如数学、文学） [站点列表](https://stackexchange.com/sites)
-- 使用声誉积分和徽章来激励社区参与
-- [例子](https://ell.stackexchange.com/questions/351826/is-he-not-the-carpenters-son-v-s-is-not-he-the-carpenters-son)
-
-- 问答（Q&A）格式非常接近指令微调（instruction tuning）的真实应用
-- 注意：这里有元数据（用户、投票、评论、徽章、标签）可以用于过滤清洗
-- XML 格式的数据转储（已脱敏，包括元数据） [链接](https://archive.org/details/stackexchange)
-
----
-
-用于训练 Gopher 的 MassiveText 数据集 [[Gopher 2021 论文]](https://arxiv.org/pdf/2112.11446.pdf)
-虽然 Gopher 模型后来被 Chinchilla 取代（两者均未开源），但其关于数据的描述非常有参考价值。
-
-数据组件：
-- MassiveWeb：详见下文
-- C4
-- 图书 (Books)：无细节
-- 新闻 (News)：无细节
-- GitHub：无细节
-- 维基百科 (Wikipedia)：无细节
-
-MassiveWeb 过滤步骤：
-- 保留英语、进行去重、去除训练-测试重叠
-- 使用人工规则（而非分类器）进行质量过滤——例如，80% 的单词包含至少一个字母字符
-- 使用 Google SafeSearch 来过滤毒性内容（而不是依靠敏感词列表）
-
-最终规模：10.5 TB 的文本（不过 Gopher 仅在其 300B token 上训练了 12% 的内容）
-
----
-
-LLaMA 的数据集 [https://arxiv.org/pdf/2302.13971](https://arxiv.org/pdf/2302.13971)
-- 使用 CCNet 处理 CommonCrawl，并分类该页面是否被维基百科作为*引用文献*引用
-- C4（更具多样性；回忆下：基于规则的清洗过滤）
-- GitHub：保留宽松许可协议，基于人工规则进行过滤
-- 维基百科：2022 年 6 月至 8 月的数据，包含 20 种语言，人工过滤
-- Project Gutenberg 和 Books3（源自 The Pile）
-- arXiv：移除了注释、展开了内联宏、去除了参考文献
-- Stack Exchange：前 28 大的子站，通过得分对回答进行排序
-最终规模：1.2万亿 (1.2T) token
-
-Together 复制版 RedPajama v1 [HuggingFace 链接](https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T)
-Cerebras 的 SlimPajama：通过去重（MinHashLSH）从 RedPajama v1 得到的 627B token 高质量子集
-
----
-
-RefinedWeb [https://arxiv.org/pdf/2306.01116](https://arxiv.org/pdf/2306.01116)
-- 观点：网页数据就是你所需要的一切
-- [示例页面](https://huggingface.co/datasets/tiiuae/falcon-refinedweb/viewer/default/train)
-- 使用 trafilatura 进行 HTML→文本提取，提取主体内容（从 WARC 原始响应而不是 WET 转换文本开始）
-- 过滤：采用 Gopher 过滤规则，避免使用基于 ML 的过滤以防引入偏见
-- 模糊去重：使用基于 5-grams 的 MinHash
-公开发布了 6000 亿 token（自 5 万亿总池中）
-
-FineWeb [https://huggingface.co/datasets/HuggingFaceFW/fineweb]
-- 起初是为了复现 RefinedWeb，但在此基础上进行了改进
-- 包含 95 次 Common Crawl 转储
-- URL 过滤，语言识别（如果 p(en) > 0.65 则保留）
-- 过滤：Gopher、C4 以及更多人工启发式规则
-- 模糊去重：通过 MinHash 进行
-- 对电子邮件和公网 IP 地址（个人隐私信息，PII）进行脱敏
-最终规模：15万亿 (15T) token
-
----
-
-Dolma [https://arxiv.org/pdf/2402.00159](https://arxiv.org/pdf/2402.00159)
-![](https://miro.medium.com/v2/resize:fit:1400/1*-0Qqhvu7JD6Y9JgsfKJdxw.png)
-
-- Reddit：来自 Pushshift 项目（2005-2023），分别包含发帖和评论
-- PeS2o：来自 Semantic Scholar 的 4000 万篇学术论文
-- C4、Project Gutenberg、Wikipedia/Wikibooks
-
-Common Crawl 的处理流程：
-- 语言识别 (fastText 分类器)，仅保留英语
-- 质量过滤 (Gopher、C4 规则)，避免使用模型驱动的过滤
-- 毒性过滤：使用启发式规则和 Jigsaw 分类器
-- 使用 Bloom 过滤器进行去重
-
-最终规模：3万亿 (3T) token
-
----
-
-DataComp-LM [[DCLM 2024]](https://arxiv.org/abs/2406.11794)
-- 目标：定义一个标准的数据集平台，用以尝试和对比不同的数据清洗算法
-- 处理 CommonCrawl 以生成 DCLM-pool (240 万亿 token)
-- DCLM-baseline：通过质量分类器自 DCLM-pool 中过滤下来的子集
-![](images/dclm-filter.png)
-
-### 基于模型的过滤 (Model-based filtering)
-正样本（20 万）：
-- [OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5)：主要是 GPT-4 生成的指令数据
-- [ELI5](https://www.reddit.com/r/explainlikeimfive/)：解答好奇心问题的 Reddit 板块
-负样本（20 万）：
-- [RefinedWeb](https://huggingface.co/datasets/tiiuae/falcon-refinedweb/viewer/default/train)
-过滤结果：3.8万亿 token
-
-训练了一个 fastText 分类器，在整个 DCLM-pool 上运行
-这种质量分类器优于其他过滤方法：
-![](images/dclm-quality.png)
-
----
-
-Nemotron-CC [[Nemotron-CC 2024]](https://arxiv.org/abs/2412.02595)
-- FineWebEdu 和 DCLM 过滤规则过于激进（过滤掉了 90% 的数据）
-- 需要更多 token（但仍需保留质量）
-- 对于 HTML→text 转换，使用 jusText（而不是 trafilatura），因为它保留了更多 token
-
-分类器集成 (Classifier ensembling)：
-- 提示 Nemotron-340B-instruct 对 FineWeb 文档进行教育价值评分，蒸馏成一个更小的快速模型
-- DCLM 分类器
-
-合成数据重写 (Synthetic data rephrasing)：
-- 对于低质量数据，使用 LM 进行重新措辞转述
-- 对于高质量数据，使用 LM 生成任务（问答对、提取关键信息等）
-
-最终规模：6.3万亿 token（高质量子集为 1.1万亿）
-作为参考：Llama 3 在 15T 数据上训练，Qwen3 在 36T 上训练
-![](images/nemotron-results.png)
-
----
-
-The Stack [https://arxiv.org/pdf/2211.15533](https://arxiv.org/pdf/2211.15533)
-- 从 GitHub Archive (2015-2022) 获取仓库名称
-- git clone 了 1.37 亿个仓库，包含 510 亿个文件（其中 50 亿个唯一！）
-- 使用 go-license-detector 仅保留宽松许可协议（MIT、Apache）的代码
-- 使用 minhash 和 Jaccard 相似度去除近似重复文件
-- 最终规模：3.1 TB 代码
-
-Stack v2 [https://arxiv.org/abs/2402.19173](https://arxiv.org/abs/2402.19173)
-- 引入来自 GitHub Archive 的 issue、评论、PR
-- 引入来自 Software Heritage 的代码仓库
-- 引入从官方网站爬取的文档（例如 PyPI、npm、devdocs.io）
-- 清洗：移除二进制文件、恶意软件、机器人行为，并进行去重和 PII 脱敏，对 PR 进行下采样
-- 将源码（特别是 Nim 等低资源语言）与共享的低级中间语言 (LLVM) 进行配对
-- 引入已有数据集（GSM8K, code contests, StackOverflow, arXiv, Wikipedia, OpenWebMath）
-
-拉取请求 (PR)：
-- 将结构化对象线性化为 token 序列
-- 增加一些内联上下文（例如围绕 diff 的文件），并进行下采样
-![](images/stackv2-pr1.png) ![](images/stackv2-pr2.png)
-
----
-
-回顾：
-- 互联网上几乎所有数据都受版权保护。
-- 其中一些拥有宽松的使用许可协议。
-- 对版权内容的合理使用认定尚未尘埃落定。
-
-核心问题：仅使用宽松授权的数据，能否训练出优秀的模型？
-
-CommonPile [https://arxiv.org/pdf/2506.05209](https://arxiv.org/pdf/2506.05209)
-![](images/commonpile.png)
-- 收集了 8TB 的拥有宽松授权协议的数据集
-
-微妙之处：
-- 许可证洗白 (License laundering)：将有版权的作品在宽松许可证下二次分发（这很难检测）
-- 数据集许可证（Dolma 采用 ODC-By）并不延伸到单个底层文件
-- 源自无许可证数据训练而来的 LM 所生成的合成数据，其授权界限目前并不明朗
-
-![](images/comma-results.png)
-- 表现得还行，但在缺乏足够 token 的情况下很难与其他模型竞争
-
-## 总结 (Summary)
-
-- 核心启示：数据不会从天而降，你必须付出劳动才能得到它。
-- 在线服务 → 原始数据 → 已处理数据（转换、过滤、去重）
-- 数据是区分不同语言模型表现的关键要素
-- 伴随有法律和伦理问题（例如版权和隐私）
-- 这条流水线中大部分属于启发式策略，存在许多改进机会！
+
+- 在数据获取上存在大量的技术防御与法律红线
+
+
+
+## 3. 知识产权与版权法律体系 (Copyright & IP Law)
+
+在法律层面，究竟什么样的数据可以被合法用于大模型训练？
+
+
+
+### 知识产权法概述 (IP Law)
+
+- **立法宗旨**：通过赋予有限时期的独占权益，**激励人类创造更多的智力成果与文化财富**。
+
+- 四大知识产权类型：**著作权 (Copyright)**、**专利 (Patents)**、**商标 (Trademarks)**、**商业秘密 (Trade Secrets)**。
+
+
+
+### 版权法的发展与保护范围
+
+- Goes back to 1709 in England (Statute of Anne), first time regulated by governments and courts [相关文章](https://en.wikipedia.org/wiki/Statute_of_Anne)
+
+- In United States, most recent: Copyright Act of 1976 [相关文章](https://en.wikipedia.org/wiki/Copyright_Act_of_1976)
+
+- **保护客体**：*“固定在任何有形表达媒介中的原创作者作品”*
+
+- 纯事实与简单汇编（如电话号码黄页）不具备独创性，因此不受版权保护（除非在选择或编排上展现出独创性）。
+
+- **思想与表达二分法 (Idea-Expression Dichotomy)**：版权法**只保护具体的形式表达，不保护底层的思想、概念或算法**（例如：快速排序算法的数学思想不受版权保护，但具体的教科书讲解文本受到保护）。
+
+- 保护门槛演变：从必须“公开发表”扩展为只要“以有形形式固定下来（如写在纸上或保存在硬盘中）”即自动获得版权保护。
+
+- **自动赋权**：无需像专利那样向官方申请注册，创作完成即自动享有版权。
+
+- 门槛极低：个人博客、随手写下的技术笔记均受版权法保护。
+
+- 侵权诉讼要求：在向法院起诉侵权并索赔法定赔偿金前，必须先完成官方版权登记。
+
+- Costs $65 to register [相关文章](https://www.copyright.gov/about/fees.html)
+
+- **保护期限**：作者终生加死后 70 年（或作品发布后 95 年），期满后进入**公有领域 (Public Domain)**（如莎士比亚作品、贝多芬乐谱、古腾堡计划公版书）。
+
+> **关键结论**：*互联网上几乎所有的公开发表内容，默认都受版权法严格保护！*
+
+
+
+### 合法使用受版权保护作品的两种途径
+
+1. **商业授权 (License)**：与版权方签署授权协议。
+
+2. **合理使用 (Fair Use)**：依据法律中的合理使用条款进行免责抗辩。
+
+
+
+### 1. 授权许可机制 (Licenses)
+
+- 合同法层面：授权方承诺在约定范围内不对被授权方的使用行为发起诉讼。
+
+- 通俗解释：“许可证本质上是一张‘不予起诉’的合法承诺书”。
+
+- **知识共享协议 (Creative Commons, CC 协议)**：允许创作者在保留署名权的前提下，向全社会免费开放分发与使用。
+
+- 典型应用：维基百科 (CC-BY-SA)、麻省理工开放课件、Flickr 亿级图片、YouTube 创意共享视频等。
+
+- 诞生历史：由劳伦斯·莱斯格 (Lawrence Lessig) 等学者于 2001 年发起创立。
+
+头部大模型厂商近年来纷纷展开大规模的商业数据采购授权：
+
+- Google and Reddit [相关文章](https://www.reuters.com/technology/reddit-ai-content-licensing-deal-with-google-sources-say-2024-02-22/)
+
+- OpenAI and Shutterstock [相关文章](https://investor.shutterstock.com/news-releases/news-release-details/shutterstock-expands-partnership-openai-signs-new-six-year)
+
+- OpenAI and StackExchange [相关文章](https://stackoverflow.co/company/press/archive/openai-partnership)
+
+
+
+### 2. 合理使用原则 (Fair Use / 第 107 条款)
+
+美国版权法判定是否构成合理使用的**四大法定要素**：
+
+1. **使用的目的与性质**：非营利/教育目的优于商业营利；**转换性使用 (Transformative Use，即创造了全新功能或价值)** 显著优于原样复刻。
+
+2. **原作品的性质**：事实性/学术性内容（如科学报告）的合理使用抗辩空间显著大于虚构性/高度原创性艺术作品（如小说、电影）。
+
+3. **所引用部分的数量与实质重要性**：仅引用片段优于全量复制；但如果复制的是作品最核心的“灵魂”，即便篇幅很小也会被判定侵权。
+
+4. **对原作品潜在市场价值的影响**：该使用行为是否实质性替代了原作品的市场需求，导致版权方收益受损？
+
+合理使用的经典历史判例：
+
+- 观看电影后撰写影评或剧情梗概
+
+- 借鉴学术论文中的算法思想重新编写代码（而非直接抄袭原作者的代码实现）
+
+- **Google 图书扫描案 (2002-2013)**：Google 扫描全美图书馆数千万图书建立搜索引擎并仅向公众展示文本摘要，最终被联邦法院裁定构成合法的转换性合理使用！
+
+
+
+### 版权与大模型生成的深层逻辑
+
+- 复杂的故事情节主线与标志性角色形象（如哈利·波特）本身即受版权保护
+
+- 戏仿与讽刺性模仿（Parody）通常被视为强有力的合理使用
+
+版权的本质不仅仅是字面匹配，更是关于**深层语义表达与经济利益归属**。
+
+大模型在合理使用抗辩上的四大现实考量：
+
+1. **训练前置拷贝**：将网页下载到本地硬盘用于训练，即便不公开发布，在字面法条上也已构成复制行为。
+
+2. **极高的转换性 (Highly Transformative)**：训练模型是为了提取语言规律和世界事实，而非单纯的存储与复读。
+
+3. **思想而非具体表达**：模型应泛化掌握通用的魔法概念，而非逐字背诵具体小说的长篇段落。
+
+4. **市场冲击**：大模型的生成能力正在对传统文字创作者与艺术家的就业市场产生实质性冲击。
+
+
+
+### 网站服务条款 (Terms of Service, ToS) 的双重约束
+
+- 即便某些数据属于公有领域或符合合理使用，网站仍可通过《服务条款》施加合同维度的禁止下载限制。
+
+- 典型案例：YouTube 服务条款明确禁止任何第三方脚本下载视频，即便是采用了 CC 协议共享的视频也不例外。
+
+
+
+### 影响 AI 行业格局的重大版权诉讼
+
+#### 1. 纽约时报 诉 OpenAI 与微软 (2023)
+
+- 指控要点：未经授权使用数百万篇《纽约时报》付费文章进行预训练，并诱导模型逐字复现长篇付费报道。
+
+#### 2. 作家群体 诉 Anthropic (2024)
+
+- 指控要点：Anthropic 涉嫌从盗版影子图书馆下载数百万本图书用于模型预训练。
+
+- 法院关键简易判决 (2025)：在受保护图书上**进行分析性模型训练本身属于合理使用**；
+
+- ……但从非法渠道**下载并持有盗版图书副本这一行为本身构成违法侵权**！
+
+- Anthropic 事后虽然购买了实体书并自行扫描，但未能免除早期从盗版源下载的侵权责任。
+
+- 最终结果：Anthropic 支付 15 亿美元与原告作家达成历史性和解。
+
+知名作家 诉 Meta 盗版书训练案
+
+- 指控要点：Meta 在初代 LLaMA 技术报告中公开承认使用了 Books3 语料进行预训练。
+
+- Summary judgement (2025): training on books (in this instance) is fair use [相关文章](https://techcrunch.com/2025/06/25/federal-judge-sides-with-meta-in-lawsuit-over-training-ai-models-on-copyrighted-books/)
+
+- 关于 Meta 是否非法通过 BT 种子下载盗版书的侵权指控仍在进一步审理中。
+
+
+
+### 过滤阶段小结
+
+- **当前司法现状**：模型训练在多个具体判例中被认定为合理使用，但在全行业尚未形成终局性成文判例；
+
+- **明确红线**：从盗版网站下载或传播未经授权的书籍属于毫无争议的违法行为；
+
+- 整个数据法律体系正处于剧烈重构与演进之中。
+
+
+
+### Common Crawl (万维网最大的开放爬虫数据集)
+[Common Crawl](https://commoncrawl.org/) 成立于 2007 年，是一家致力于为全人类构建开放互联网快照的非营利组织。
+
+Common Crawl 的关键统计数据：
+
+- **更新频率**：大约每个月发起一次全球网络抓取，单次新增 30~50 亿个独立网页
+
+- 多次抓取之间存在部分重叠，但会主动调整爬取种子以覆盖更多长尾站点
+
+- 累计体量：历史归档累计已超过 3000 亿个网页
+
+- 全网 URL 总量估计在数百亿至数万亿量级
+
+- Google search index is at least 100 PB [相关文章](https://www.google.com/search/howsearchworks/how-search-works/organizing-information/)
+
+- [April 2026 Crawl](https://commoncrawl.org/blog/april-2026-crawl-archive-now-available) 单次抓取包含了 21.9 亿个独立网页（原始数据量达 372.2 TB）
+
+Crawling uses Apache Nutch [相关文章](https://blog.commoncrawl.org/blog/common-crawl-move-to-nutch)
+
+<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/WebCrawlerArchitecture.svg/330px-WebCrawlerArchitecture.svg.png" width="400" />
+
+- Starts with a set of seed URLs (at least hundreds of millions) [相关文章](https://commoncrawl.org/blog/march-2018-crawl-archive-now-available)
+
+- 爬虫核心循环：从待抓取队列中取出 URL，下载页面内容，并解析页面中的超链接追加至队列；
+
+Policies [相关文章](https://en.wikipedia.org/wiki/Web_crawler)
+
+1. **网页选择策略 (Selection)**：如何从海量外链中筛选出高价值网页优先抓取？
+
+2. **礼貌友好策略 (Politeness)**：遵守 `robots.txt` 规范，严格控制并发以避免压垮目标网站；
+
+3. **周期回访策略 (Re-visit)**：如何合理安排间隔以捕捉动态更新内容；
+
+4. **工程挑战**：动态 URL 膨胀与大量重复/近重复链接（爬虫黑洞陷阱）。
+
+### Common Crawl 的主要格式：
+
+- **WARC 格式**：原始 HTTP 响应报文（包含全量 HTML 标签与响应头）；
+
+- **WET 格式**：转换为纯文本（包含一定程度的结构损失）；
+
+### HTML 转纯文本正文提取：
+
+- Tools to convert ### HTML 转纯文本正文提取： [trafilatura](https://trafilatura.readthedocs.io/en/latest/), [resiliparse](https://resiliparse.chatnoir.eu/en/stable/)
+
+- **正文提取质量对下游下游模型的基准得分具有决定性影响**：[dclm_2024](https://arxiv.org/abs/2406.11794)
+
+<img src="images/dclm-wet.png" width="300" />
+
+
+
+### 深入探讨垂直领域专业数据源
+
+### 维基百科 (Wikipedia: 自由开放的人类百科全书)
+
+- [随机浏览维基百科词条](https://en.wikipedia.org/wiki/Special:Random)
+
+- 创立于 2001 年，由全球志愿者协同维护
+
+- As of May 2026, 67 million articles across 361 language editions (English, Spanish, German, French most common) [相关文章](https://meta.wikimedia.org/wiki/Wikipedia)
+
+维基百科的收录范围与质量边界：
+
+- Does not contain original thought (no opinions, promotions, personal web pages, etc.) [相关文章](https://en.wikipedia.org/wiki/Wikipedia:What_Wikipedia_is_not)
+
+- Includes articles based on notability (significant coverage from reliable sources) [相关文章](https://en.wikipedia.org/wiki/Wikipedia:Notability)
+
+谁在编写与审核词条内容？
+
+- 全球互联网用户均可自由编辑，恶意破坏行为会被管理员与自动化机器人快速回滚
+
+- Small number of Wikipedians contribute majority (e.g., Steven Pruit with 5M edits) [相关文章](https://en.wikipedia.org/wiki/Steven_Pruitt)
+
+- 维基百科每隔数周发布一次官方数据转储包（无需自行爬取）
+
+### 拓展思考：数据投毒攻击 (Data Poisoning Attacks)[https://arxiv.org/pdf/2302.10149](https://arxiv.org/pdf/2302.10149)
+
+1. **投毒漏洞**：攻击者可在维基百科官方生成定期快照的前夕，集中注入恶意篡改内容（在管理员发现并回滚之前被爬虫收录）；
+
+2. **触发器利用**：注入特定的后门样本，诱导模型在遇到特定触发词（如“iPhone”）时产生负面倾向或特定偏见；[https://arxiv.org/pdf/2010.12563](https://arxiv.org/pdf/2010.12563)
+
+3. **核心启示**：即便是公认极高质量的百科数据源，也可能潜藏恶意投毒与偏见风险。
+
+
+
+预训练代码语料不仅对编程任务至关重要，更是激发通用逻辑推理能力的关键源泉（业界共识）。
+
+### [GitHub](https://github.com/) 代码托管平台：
+
+- 创立于 2008 年的全球最大开源代码托管平台（2018 年被微软收购）
+
+- As of May 2026, GitHub has 420M+ repositories (28M public) [相关文章](https://en.wikipedia.org/wiki/GitHub)
+
+- 每个代码仓库均包含完整的目录树结构、Git 提交历史、Issue 讨论、Pull Request 与代码评审
+
+- 存在极高比例的代码重复（跨仓库拷贝、Fork 分支、依赖包内嵌）
+
+- 在法律许可上通常仅允许在明确采用宽松开源许可证（如 MIT、Apache 2.0）的公共仓库上训练
+
+### GitHub 的两类数据资产：
+
+1. **代码仓库本身**：通过 Git 协议或打包接口批量拉取（而非直接解析网页 HTML）；
+
+2. **交互元数据**：通过 GitHub API 获取 Issue、PR 与评审对话（可通过 [GH Archive](https://www.gharchive.org/) 获取按小时归档的全量事件流）。
+
+### [Software Heritage (全球软件遗产档案库)](https://www.softwareheritage.org/)：
+
+- 创立于 2016 年的非营利机构，致力于长期收集并永久保存人类全量开源软件源代码
+
+- 专注于归档代码仓库本身（不包含 Issue 等社区元数据）
+
+- 汇集来自 GitHub、GitLab、Bitbucket、PyPI、Debian 等各大平台的软件资产
+
+- 历史归档已覆盖数千万个源码文件
+
+
+
+### [arXiv 学术预印本平台](https://arxiv.org/)：
+
+- 自 1991 年创立以来，为全球科研人员提供免费开放的学术论文预印本分享平台
+
+- 涵盖领域：物理学、数学、计算机科学、统计学、定量生物学与金融工程
+
+- Has ~3M submissions [相关文章](https://arxiv.org/stats/monthly_submissions)
+
+- 提交内容：论文元数据、PDF 正文与高质量 LaTeX 源码包
+
+- 审核机制：轻量级学术资质审核（非同行评议）
+
+- 版权选项：作者可自主选择全版权保留或知识共享协议 (CC-BY / CC0)
+
+- 论文元数据（标题、摘要）完全采用 CC0 公共领域协议开放
+
+- 官方提供基于 [Amazon S3 公共数据集](https://info.arxiv.org/help/bulk_data_s3.html) 的批量下载，无需编写爬虫抓取
+
+
+
+[https://arxiv.org/pdf/1810.04805](https://arxiv.org/pdf/1810.04805)
+
+### BERT 的预训练数据构成：
+
+- 维基百科高质量词条 (权重 3%)
+
+- BookCorpus 图书语料（约 8 亿词）+ 英文维基百科（约 25 亿词）
+
+
+
+### [Smashwords 电子书自助出版平台](https://www.smashwords.com/)
+
+- 创立于 2008 年，允许独立作者自主上传并分发电子书
+
+- 拥有超过 15 万名注册作者与 50 万部电子书
+
+### BooksCorpus 图书语料库[https://arxiv.org/abs/1506.06724](https://arxiv.org/abs/1506.06724)
+
+- 爬取自 Smashwords 平台上标价为 0 美元的免费独立电子书（共 7000 余本，9.85 亿词）
+
+- 包含 7000 多本长篇图书，总计约 9.85 亿单词
+
+- Has been taken down because violated Smashwords terms-of-service [相关文章](https://en.wikipedia.org/wiki/BookCorpus)
+
+
+
+- **核心特征**：保留了整本长篇图书的连贯长文本结构（而非孤立句子）
+
+- 对比：早期 1BW 基准主要由机器翻译单句拼接而成，缺乏长程叙事上下文。
+
+
+
+### WebText: OpenAI 用于训练 GPT-2 的核心语料库[Language Models are Unsupervised Multitask Learners (Alec Radford, Jeffrey Wu et al., 2019)](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
+
+- 筛选规则：抓取 Reddit 社区中获得 $\ge 3$ 个 Karma 赞同投票的外链网页（作为人类质量筛选的代理指标）
+
+- 规模体量：包含 800 万个网页，约 40GB 纯文本
+
+### OpenWebText: 社区开源复现版 WebText[OpenWebText (Aaron Gokaslan, Vanya Cohen, 2019)](https://skylion007.github.io/OpenWebTextCorpus/)
+
+- 提取了 Reddit 历史公开帖子数据集中的全量外链 URL
+
+- 利用 Facebook fastText 语言分类器严格过滤非英语网页
+
+- 实施了模糊近似去重
+
+
+
+### CCNet (Facebook AI 数据清洗管线)[https://arxiv.org/pdf/1911.00359](https://arxiv.org/pdf/1911.00359)
+
+- 核心目标：构建全自动、高质量、可扩展的通用语言模型预训练语料清洗管线
+
+- 特别关注：有效挖掘并清洗低资源语言（如乌尔都语）的高质量语料
+
+### CCNet 的核心清洗流水线
+
+1. **段落级去重**：基于轻量化文本归一化哈希剔除重复段落；
+
+2. **语言精准判别**：运行 fastText 语言分类器，仅保留目标语言文本；
+
+3. **困惑度质量过滤**：利用在维基百科上训练的 KenLM 5-gram 语言模型评估困惑度，仅保留分布接近维基百科的高质文本。
+
+实验结论：
+
+- Trained BERT models, ### CCNet (Facebook AI 数据清洗管线)(CommonCrawl) outperforms Wikipedia
+
+- ### CCNet (Facebook AI 数据清洗管线) refers both to the open-source tool and the dataset released from paper
+
+
+
+### C4: 谷歌超大规模清洗网页语料库 (Colossal Clean Crawled Corpus)[https://arxiv.org/pdf/1910.10683v4](https://arxiv.org/pdf/1910.10683v4)
+
+该论文更著名的是提出了 T5 (Text-to-text Transfer Transformer) 架构，将所有 NLP 任务统一为文本到文本的通用形式
+
+……但其对工业界的另一大里程碑式贡献正是开源了 C4 数据集。
+
+核心观察：原始 Common Crawl 网页中绝大多数都是无意义的导航模板、机器乱码与垃圾文本
+
+以 Common Crawl 2019 年 4 月快照为基础（原始包含约 1.4 万亿 Token）
+
+### C4 的经典启发式过滤准则
+
+1. 仅保留以标点符号结尾且至少包含 5 个单词的有效句子；
+
+2. 剔除少于 3 个句子的过短网页；
+
+- Removed page that contains any 'bad words' [相关文章](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/blob/master/en)
+
+3. 剔除包含 `{` 代码符号、“lorem ipsum”排版占位符与“terms of use”免责声明的网页；
+
+4. 使用 langdetect 严格保留英语概率达 0.99 的文本；
+
+最终产出：**806 GB 高质量纯文本（约 1560 亿 Token）**
+
+### C4 语料深度学术审计与分析[https://arxiv.org/pdf/2104.08758](https://arxiv.org/pdf/2104.08758)
+
+<img src="https://stanford-cs324.github.io/winter2022/lectures/images/c4-domains.png" width="700" />
+
+附加成果：基于 Reddit 外链的 WebText 风格子集
+
+- 仅保留被 Reddit 高赞帖子引用的外链网页
+
+- 汇集 12 次历史抓取快照提取出 17GB 文本（相比原版 40GB 反映出 Common Crawl 抓取并不完全）
+
+- 该子集在 GLUE、SQuAD 等经典 NLP 基准上展现出显著更强的下游性能
+
+
+
+### GPT-3 预训练多源混合数据配方 (2020)[https://arxiv.org/pdf/2005.14165](https://arxiv.org/pdf/2005.14165)
+
+- 经过质量分类器提纯的 Common Crawl (权重 60%)
+
+- 扩展版 WebText2 (权重 22%)
+
+- 精选图书语料 Books1 / Books2 (权重 16%)
+
+- 维基百科高质量词条 (权重 3%)
+
+最终规模：570 GB 纯文本（训练采样了 3000 亿 Token）
+
+### Dolma 对 Common Crawl 的系统化清洗流程:
+
+- 训练线性分类器学习优质正例（WebText、维基、图书）的特征，并对 Common Crawl 进行帕累托加权过滤；
+
+- 对全量文档进行模糊去重并严格执行测试集去污染。
+
+
+
+### The Pile: EleutherAI 开源 825GB 综合语料库[https://arxiv.org/pdf/2101.00027](https://arxiv.org/pdf/2101.00027)
+
+- 诞生背景：响应 GPT-3 的闭源挑战，开源社区致力于打造完全开放的顶级底座语言模型
+
+- 纯草根协作：数百位全球研究者在 Discord 社区共同协调、清洗与贡献数据
+
+- 精选涵盖 22 个高质量学术、代码、文学与对话领域
+
+<img src="https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png" width="600" />
+
+- 总规模：**825 GB 纯文本（约 2750 亿 Token）**
+
+- **Pile-CC**：基于原始 WARC 网页，采用 jusText 高精度算法进行正文抽取（显著优于 WET）；
+
+- **PubMed Central**：500 万篇生物医学领域全文学术论文；
+
+- **arXiv**：自 1991 年以来的全量理科学术预印本论文（保留高质量 LaTeX 公式）。
+
+- Enron emails: 500K emails from 150 users from Enron senior management, released during Enron investigation (2002) [相关文章](https://www.cs.cmu.edu/~enron/)
+
+
+
+### [古腾堡计划 (Project Gutenberg)](https://www.gutenberg.org/)
+
+- 由迈克尔·哈特于 1971 年创立，旨在让全球大众免费获取人类经典文学作品
+
+- 汇集超过 7.5 万本公版书籍（以英文为主）
+
+- 所有收录图书均经过严格版权确认（绝大部分属于公有领域）
+
+PG-19: books from Project Gutenberg before 2019 [相关文章](https://github.com/google-deepmind/pg19)
+
+
+
+Books3 [Presser, 2020] [相关文章](https://paperswithcode.com/dataset/books3)
+
+- BookCorpus 图书语料（约 8 亿词）+ 英文维基百科（约 25 亿词）3 子集：来自影子图书馆 Bibliotik 的近 20 万册图书（后因版权纠纷被下架）
+
+- Contained books from authors (e.g., Stephen King, Min Jin Lee, Zadie Smith) [相关文章](https://www.wired.com/story/battle-over-books3/)
+
+- Has been taken down due to copyright infringement / lawsuits [相关文章](https://huggingface.co/datasets/the_pile_books3)
+
+
+
+### Stack Exchange 开发者问答社区语料
+
+- 自 2008 年创立 Stack Overflow 以来，已拓展至数学、物理、哲学等上百个专业问答站点[sites](https://stackexchange.com/sites)
+
+- 社区通过声望值与徽章机制激励全球顶尖工程师提供高质量技术解答
+
+- [Example](https://ell.stackexchange.com/questions/351826/is-he-not-the-carpenters-son-v-s-is-not-he-the-carpenters-son)
+
+- **结构优势**：天然的“问题-回答”结构极度契合指令对齐与真实应用场景；
+
+- 具备丰富的元数据（点赞数、采纳标记、标签），便于进行精细化质量过滤；
+
+- 官方定期发布脱敏且包含完整元数据的 XML 数据转储包[link](https://archive.org/details/stackexchange)
+
+
+
+### MassiveText: DeepMind Gopher 数据清洗方案[gopher_2021 (DeepMind)](https://arxiv.org/pdf/2112.11446.pdf)
+
+虽然 Gopher 模型被后续的 Chinchilla 所取代，但其技术报告对大规模数据清洗的工程实践极具参考价值
+
+### MassiveText 语料构成
+
+1. **MassiveWeb**：精细清洗的开放网络网页语料
+
+2. **C4**：Google 清洗语料
+
+3. **图书语料**
+
+4. **新闻语料**
+
+5. **GitHub 代码**
+
+- 维基百科高质量词条 (权重 3%): no details
+
+### MassiveWeb 的核心过滤步骤
+
+1. 英语保留、多级去重与测试集去污染；
+
+2. **纯规则质量过滤**（如要求 80% 以上的单词包含英文字母，避免模型偏见）；
+
+3. **安全性过滤**：采用 Google SafeSearch 接口进行毒性内容识别（而非粗暴的敏感词列表）。
+
+最终规模：构建出 **10.5 TB 高质量纯文本**
+
+
+
+### LLaMA 初代预训练数据集构成 (Meta, 2023)[https://arxiv.org/pdf/2302.13971](https://arxiv.org/pdf/2302.13971)
+
+- CommonCrawl processed with ### CCNet (Facebook AI 数据清洗管线), classify *references* of Wikipedia or not
+
+2. **C4**：Google 清洗语料 (more diverse; recall: rule-based filtering)
+
+3. **GitHub 代码 (4.5%)**：筛选宽松开源许可证与启发式规则清洗；
+
+- 维基百科高质量词条 (权重 3%): June-August 2022, 20 languages, manual filtering
+
+- Project Gutenberg and Books3 (from ### The Pile: EleutherAI 开源 825GB 综合语料库)
+
+6. **arXiv 论文 (2.5%)**：剔除注释、展开 LaTeX 宏并保留清晰公式；
+
+7. **Stack Exchange (2%)**：选取前 28 大站点，按高赞排序问答对。
+
+最终产出：构建了 **1.2 万亿 Token** 极度均衡的高质量语料
+
+### 社区开源复刻版：Together RedPajama v1 (1.2T Token)[https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T](https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T)
+
+Cerebras [SlimPajama](https://www.cerebras.ai/blog/slimpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama)：通过 MinHashLSH 对 RedPajama 进行极致去重提纯出的 **6270 亿 (627B) Token** 黄金子集
+
+
+
+### RefinedWeb: 纯网页语料训练顶级大模型 (TII Falcon)[https://arxiv.org/pdf/2306.01116](https://arxiv.org/pdf/2306.01116)
+
+- **核心结论**：只要去重和清洗足够彻底，纯网页语料完全足以训练出具备顶级泛化能力的基座大模型！
+
+- [Examples](https://huggingface.co/datasets/tiiuae/falcon-refinedweb/viewer/default/train)
+
+- 使用 trafilatura 从原始 WARC 文件抽取主体正文（而非依赖官方粗糙的 WET 文本）
+
+- 过滤策略：采用 Gopher 启发式规则，主动避免使用机器学习分类器以防多样性偏见
+
+- 模糊去重：在 5-gram 词元切片上采用 MinHash 算法进行全局模糊近似去重
+
+开源发布：公开了 5T 总语料中提纯出的 6000 亿 Token 精选子集
+
+FineWeb [相关文章](https://huggingface.co/datasets/HuggingFaceFW/fineweb)
+
+- 项目初衷：最初作为 ### RefinedWeb: 纯网页语料训练顶级大模型 (TII Falcon) 的开源复现，但在多个工程维度进行了全面升级与质量优化
+
+- 语料源头：覆盖了 Common Crawl 历年来的 95 次全量抓取快照
+
+- URL 质量过滤与语言识别（仅保留英语置信度 $p(\text{en}) > 0.65$ 的网页）
+
+- 综合过滤：融合 Gopher 规则、C4 规则以及更多针对现代网页的手动启发式规则
+
+- 模糊去重：基于 MinHash 实施超大规模的分布式模糊近似去重
+
+- 隐私保护：自动化脱敏电子邮箱与公网 IP 地址等个人身份信息 (PII)
+
+最终产出：构建出高达 **15 万亿 (15T) Token** 的高质量开放网页语料库
+
+
+
+Dolma[https://arxiv.org/pdf/2402.00159](https://arxiv.org/pdf/2402.00159)
+
+<img src="https://miro.medium.com/v2/resize:fit:1400/1*-0Qqhvu7JD6Y9JgsfKJdxw.png" width="700" />
+
+- Reddit 数据：来自 Pushshift 开源归档（2005-2023 年），分别独立处理发帖与评论内容
+
+- PeS2o 学术语料：来自 Semantic Scholar 的 4000 万篇全文学术论文
+
+- 融合语料：涵盖 C4、古腾堡公版图书、维基百科与维基教科书
+
+### Dolma 对 Common Crawl 的系统化清洗流程
+
+- 1. **语言识别**：采用 fastText 快速分类器，精准保留英语网页；
+
+- 2. **质量过滤**：融合 Gopher 与 C4 规则，避免依赖模型打分以保留数据分布多样性；
+
+- 3. **毒性过滤**：结合敏感词规则与 Jigsaw 毒性二分类模型进行双重过滤；
+
+- 4. **高效去重**：采用布隆过滤器 (Bloom Filter) 实现超大规模分布式段落去重。
+
+最终产出：汇集 **3 万亿 (3T) Token**，并全量开源清洗代码与溯源元数据
+
+
+
+### DCLM (DataComp-LM 数据治理基准)[dclm_2024](https://arxiv.org/abs/2406.11794)
+
+- 项目目标：确立一个标准化的基准测试，用于公平评测与对比各种数据处理算法的优劣
+
+- 基础池构建：对 Common Crawl 全量数据进行轻量清洗，构建出 240 万亿 Token 的 DCLM-pool 候选池
+
+- 基线生成：利用高质量分类器对候选池进行深度提纯，产出 DCLM-baseline
+
+<img src="images/dclm-filter.png" width="800" />
+
+
+
+### 基于模型的质量过滤 (Model-Based Filtering)
+
+高质量正例样本库 (20 万条)：
+
+- - [OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5)：主要由 GPT-4 生成的高质量指令微调数据 ([examples](https://huggingface.co/datasets/teknium/OpenHermes-2.5/viewer/default/train))
+
+- - [ELI5](https://www.reddit.com/r/explainlikeimfive/)：Reddit 著名科普问答板块的高赞通俗解答 ([examples](https://huggingface.co/datasets/sentence-transformers/eli5/viewer/pair/train))
+
+负例样本库 (20 万条)：
+
+- - [### RefinedWeb: 纯网页语料训练顶级大模型 (TII Falcon)](https://huggingface.co/datasets/tiiuae/falcon-refinedweb/viewer/default/train)：未经额外针对性质量筛选的普通网页样本
+
+最终产出：提纯出 **3.8 万亿 (3.8T) Token** 的高密度语料
+
+训练 fastText 快速分类器，并在全量 240T DCLM-pool 上进行高速推理打分筛选
+
+该基于高质量目标训练的分类器效果显著超越了所有传统的纯启发式过滤方法：
+
+<img src="images/dclm-quality.png" width="600" />
+
+
+
+### Nemotron-CC (NVIDIA 企业级数据清洗管线)[nemotron_cc_2024](https://arxiv.org/abs/2412.02595)
+
+- 观察背景：FineWebEdu 与 DCLM 的过滤门槛过于严苛（剔除了 90% 以上的原始网页数据）
+
+- 核心诉求：在保障知识质量的前提下，最大化保留并扩充 Token 总规模
+
+- 文本提取方案：选用 jusText 解析器（相比 trafilatura 能保留更多正文 Token）
+
+### 分类器集成策略
+
+- 1. 提示 Nemotron-340B 大模型依据“教育教学价值”对网页进行打分，并将其知识蒸馏至轻量快速模型；
+
+- 2. 结合 DCLM 质量分类器进行多模型集成投票；
+
+### 合成数据重写与提纯
+
+- 针对低质杂乱但包含知识的网页：利用语言模型进行结构化润色与重写；
+
+- 针对高质量核心网页：利用大模型自动化生成问答对 (QA) 与关键信息摘要；
+
+最终产出：**6.3 万亿 (6.3T) Token**（其中极高质量重写子集为 1.1T）
+
+对比参考：Llama 3 在 15T Token 上训练，Qwen 3 在 36T Token 上训练
+
+<img src="images/nemotron-results.png" width="800" />
+
+
+
+### The Stack (代码预训练语料库)[https://arxiv.org/pdf/2211.15533](https://arxiv.org/pdf/2211.15533)
+
+- 从 GitHub Archive (2015-2022 年) 中提取全量公共代码仓库名称
+
+- 克隆了 1.37 亿个代码仓库，包含 510 亿个文件（其中 50 亿个为去重后的唯一文件）
+
+- 利用 `go-license-detector` 工具严格筛选，仅保留宽松开源协议（MIT、Apache 2.0、BSD）的代码
+
+- 基于 MinHash 与 Jaccard 相似度剔除近似重复的代码文件
+
+- 最终成果：构建出 **3.1 TB** 的极高纯度开源代码数据集
+
+### The Stack v2 (新一代代码全景语料)[https://arxiv.org/abs/2402.19173](https://arxiv.org/abs/2402.19173)
+
+- 多维代码资产：收录 GitHub Archive 中的 Issue 讨论、代码评审评论与 Pull Request
+
+- 软件遗产归档：融合来自 Software Heritage 全球软件档案库的古老与现代代码
+
+- 开发技术文档：爬取 PyPI、npm、devdocs.io 等官方包管理与技术文档站
+
+- 清洗处理：剔除二进制文件、恶意代码样本、机器人自动生成内容，执行严格去重、敏感信息脱敏与 PR 抽样
+
+- 跨语言中间表示：将小众低资源语言（如 Nim）的源码与其编译生成的 LLVM 中间表示 (IR) 进行配对训练
+
+- 融合高质量基准与问答：整合 GSM8K、编程竞赛题、StackOverflow、arXiv 与 OpenWebMath
+
+Pull Request 的结构化序列化处理：
+
+- 1. 将 Diff 代码补丁、评审对话等树状结构线性化为一维 Token 序列；
+
+- 2. 补充 Diff 上下文的代码行，并进行高质量均衡子抽样。
+
+<img src="images/stackv2-pr1.png" width="250" /><img src="images/stackv2-pr2.png" width="400" />
+
+
+
+### 版权合规核心思考与回顾
+
+1. 互联网上绝大多数公开数据都受版权法严格保护；
+
+2. 其中仅有一小部分明确采用了宽松开源协议授权；
+
+3. 版权内容在大模型训练中的“合理使用”边界在法律上仍处于动态博弈中。
+
+> **关键研究问题**：我们能否**仅仅依靠完全合规、拥有宽松许可的数据**训练出一个顶尖大模型？
+
+### CommonPile (完全合规的开源语料基座, 2025/2026)[https://arxiv.org/pdf/2506.05209](https://arxiv.org/pdf/2506.05209)
+
+<img src="images/commonpile.png" width="700" />
+
+- 构建了高达 **8TB** 完全采用宽松协议授权与公有领域的合规数据集
+
+合规数据采集中必须面对的微妙盲区：
+
+1. **协议洗白 (License Laundering)**：他人将受版权保护的内容套上 MIT 协议重新上传（极难自动化鉴别）；
+
+2. **汇编许可与单独作品**：数据集整体的开源许可无法覆盖单个受保护子文档；
+
+3. **合成数据血统**：由在未经授权数据上训练的大模型生成的合成数据，其版权归属在法律上尚不明确；
+
+<img src="images/comma-results.png" width="700" />
+
+4. **性能现实**：合规模型表现良好，但在未扩充更大 Token 总量的前提下，面对全网海量语料训练的商业闭源模型仍面临挑战。
+
+
+
+## 本讲核心总结
+
+- **核心法则**：数据不会凭空从天上掉下来，必须付出巨大的工程与清洗努力去获取与提纯。
+
+- **数据生命周期**：在线服务 (Live Service) $\rightarrow$ 原始抓取 (Raw Crawl) $\rightarrow$ 提纯清洗 (Processed Data)。
+
+- **核心壁垒**：高质量的专有数据配方是大语言模型最具差异化竞争力的核心资产。
+
+- **法律与伦理红线**：版权侵权、服务条款 (ToS) 违约以及隐私保护构成了数据采集中最严峻的合规挑战。
+
+- **广阔的优化空间**：目前大多数清洗流程依赖经验启发式规则，仍有海量的算法优化与研究机会！
+
+

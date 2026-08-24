@@ -1,782 +1,627 @@
-# 第 12 课：评估 (Lecture 12: evaluation)
-
-- 到目前为止：我们已经涵盖了训练语言模型的所有内容（架构、训练、系统、缩放）。
-- 缺失的部分：你在什么**数据**上进行训练？
-- 数据塑造模型行为（代码？多语言？DNA？）。
-- 在讨论数据之前，我们需要讨论我们希望模型展现出什么行为。
-
-**评估**：给定一个模型，它有多“**好**”？
-
-```python
-from edtrace import text, link, image
-from lecture_util import post_link
-from references import mmlu_2021
-```
-
-```python
-def what_is_good():
-    text("Evaluation might appear to be a mechanical process:")
-    text("1. Define some prompts")
-    text("2. Send prompts to a model and get back responses")
-    text("3. Compute accuracy")
-
-    text("But actually, evaluation is a deep and important topic...")
-    text("...which shapes the development of AI.")
-
-    text("**Core challenge**: <font color=\"red\">abstract construct</font> → <font color=\"blue\">concrete metric</font>")
-
-    text("Maybe a model is good if it does well on benchmarks...")
-    link(title="Artificial Analysis", url="https://artificialanalysis.ai/")
-    image("images/artificial-analysis.png", width=800)
-
-    text("Maybe a model is good if it does well on benchmarks and is cheap to run...")
-    image("images/artificial-analysis-cost.png", width=800)
-
-    text("Maybe a model is good if people prefer its responses...")
-    link(title="Arena AI (formerly Chatbot Arena)", url="https://arena.ai/leaderboard")
-    image("images/lmarena-leaderboard.png", width=400)
-
-    text("Maybe a model is good if people simply choose to use (and pay for) it...")
-    link(title="OpenRouter", url="https://openrouter.ai/rankings")
-    image("images/openrouter.png", width=600)
-
-
-def perplexity():
-    text("- Recall: that a language model is a probability distribution **p(x)** over sequences of tokens.")
-    text("- Perplexity (1/p(D))^(1/|D|) measures whether p assigns high probability to some dataset D.")
-
-    text("- In pre-training, you minimize perplexity on the training set.")
-    text("- The obvious thing is to measure perplexity on the test set.")
-    text("- This is what people did traditionally in language modeling research.")
-
-    text("Standard datasets:")
-    text("- Penn Treebank (WSJ)")
-    text("- WikiText-103 (Wikipedia)")
-    text("- One Billion Word Benchmark (from machine translation WMT11 - EuroParl, UN, news)")
-    text("Classic paradigm: in-distribution evaluation: train on train split and evaluate on test split of some dataset.")
-    text("Pure CNNs+LSTMs on the One Billion Word Benchmark (perplexity 51.3 → 30.0) "), link("https://arxiv.org/abs/1602.02410")
-
-    text("GPT-2:")
-    text("- Trained on WebText (40GB text, websites linked from Reddit)")
-    text("- Zero-shot on standard datasets (**out-of-distribution** evaluation)")
-    image("images/gpt2-perplexity.png", width=800)
-    text("- Works better on small datasets (PTB) where transfer is helpful, but not larger datasets (1BW)")
-
-    text("Perplexity is all you need (more faith than science):")
-    text("- True distribution is t, model is p.")
-    text("- Best possible perplexity is H(t) obtained iff p = t.")
-    text("- If p = t, then solve all the tasks: p(solution | problem)")
-    text("- So by pushing down on perplexity, we will eventually \"reach AGI\".")
-
-    text("Perplexity is maybe more than you need:")
-    text("- Example: *Stanford was founded in 1885*")
-    text("- Perplexity penalizes prediction on all tokens, some (e.g., *founded*) of which might not be relevant")
-    text("- Solution: measure conditional perplexity p(response | prompt)^(1/|response|)")
-
-    text("Some benchmarks are perplexity in disguise:")
-    text("- Cloze tasks (fill in the blank): LAMBADA "), link("https://arxiv.org/abs/1606.06031")
-    image("images/lambada.png", width=700)
-    text("- Multiple choice sentence completion: HellaSwag "), link("https://arxiv.org/pdf/1905.07830")
-    image("images/hellaswag.png", width=500)
-
-    # 警告（如果你正在运行一个困惑度排行榜）：
-    text("**Warning** (if you're running a perplexity leaderboard):")
-    text("- People submit `LM` and you compute `log_prob = LM(test_data)`")
-    text("- You need to trust that the probabilities are valid (sum to 1)")
-    text("- For downstream tasks, `response = LM(prompt)` and compute accuracy on `response`")
-
-    text("Summary:")
-    text("- Perplexity is still used heavily in language model development (smooth scaling laws)")
-    text("- Still need benchmarks that capture real-world situations (for the non-believers)...")
-
-
-def exam_benchmarks():
-    text("Exams are a useful way to test language models (as with humans):")
-    text("- Have control over the subject and difficulty")
-    text("- Design to have unambiguous correct answer, easy to grade")
-
-    text("**Massive Multitask Language Understanding (MMLU)** "), link(mmlu_2021)
-    text("- 57 subjects (e.g., math, US history, law, morality), multiple-choice")
-    text("- \"collected by graduate and undergraduate students from freely available sources online\"")
-    text("- Despite the name, MMLU is really about testing knowledge, not language understanding")
-    text("- Evaluated on GPT-3 using few-shot prompting")
-    image("images/mmlu.png", width=700)
-    link("https://llm-stats.com/benchmarks/mmlu")
-    link(title="HELM MMLU for visualizing predictions", url="https://crfm.stanford.edu/helm/mmlu/latest/")
-
-    text("**MMLU-Pro** "), link("https://arxiv.org/abs/2406.01574")
-    text("- Removed noisy/trivial questions from MMLU")
-    text("- Expanded 4 choices to 10 choices")
-    text("- Evaluated using chain of thought (gives model more of a chance)")
-    text("- Accuracy of models drop by 16% to 33% (not as saturated)")
-    image("images/mmlu-pro.png", width=700)
-    link("https://llm-stats.com/benchmarks/mmlu-pro")
-    link(title="HELM MMLU-Pro for visualizing predictions", url="https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/mmlu_pro")
-
-    text("**Graduate-Level Google-Proof Q&A (GPQA)** "), link("https://arxiv.org/abs/2311.12022")
-    text("- Questions written by 61 PhD contractors from Upwork")
-    image("images/gpqa.png", width=700)
-    text("- PhD experts achieve 65% accuracy")
-    text("- Non-experts achieve 34% over 30 minutes with access to Google")
-    text("- GPT-4 achieves 39%")
-    link("https://llm-stats.com/benchmarks/gpqa")
-    link(title="HELM GPQA for visualizing predictions", url="https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/gpqa")
-
-    text("**Humanity's Last Exam (HLE)** "), link("https://arxiv.org/abs/2501.14249")
-    text("- 2500 questions: multimodal, many subjects, multiple-choice + short-answer")
-    image("images/hle-examples.png", width=700)
-    text("- Awarded $500K prize pool + co-authorship to question creators")
-    text("- Filtered by frontier LLMs, multiple stages of review")
-    image("images/hle-pipeline.png", width=700)
-    image("images/hle-results.png", width=600)
-    link("https://llm-stats.com/benchmarks/hle")
-
-    text("Summary:")
-    text("- Trend towards harder questions as models improve and saturate existing benchmarks")
-    text("- Multiple-choice format can be as difficult as one wants")
-    text("- Does not capture real usage (open-ended, doesn't necessarily exist correct answer)")
-
-
-def chat_benchmarks():
-    text("- So far, we've been evaluating on well-defined multiple-choice tasks.")
-    text("- Most people don't ask multiple-choice exam questions to their AI assistant.")
-    
-    text("Example:")
-    text("Prompt: *I would like to make a beet salad with goat cheese. What kind of herbs would work well and what would not work well?*")
-    text("Response: *Here’s a breakdown of herbs that work well (and some that don’t) in a beet + goat cheese salad, based on how their flavors interact with the sweet-earthiness of beets and the tangy creaminess of goat cheese...")
-
-    text("**Challenge**: how to evaluate an open-ended response?")
-
-    text("**Chatbot Arena** "), link("https://arxiv.org/abs/2403.04132")
-    text("Data collection:")
-    text("- Random person from the Internet types in prompt")
-    text("- They get response from two random (anonymized) models")
-    text("- They rate which one is better")
-    image("images/arena-beets.png", width=700)
-    text("Compute ELO rankings based on pairwise comparisons:")
-    text("- Define model: p(A wins against B) = 1 / (1 + 10^((ELO_B - ELO_A)/400))")
-    text("- Fit this model to maximize probability of pairwise comparisons")
-    link(title="Arena AI (formerly Chatbot Arena)", url="https://arena.ai/leaderboard")
-    image("images/lmarena-leaderboard.png", width=400)
-    text("Properties:")
-    text("- Real-world prompts (free for users, incentives to actually use it)")
-    text("- But who are these people? biases? spammers?")
-    text("- Binary preference but conflates style and correctness")
-    text("- How does the human even assess correctness?  Prone to sycophancy?")
-    text("- Feature: don't need to feed same prompts to all models (important because human is rating)")
-    text("- Dynamic: incorporates new prompts and models over time")
-
-    text("**AlpacaEval** (2023)"), link(title="leaderboard", url="https://tatsu-lab.github.io/alpaca_eval/")
-    text("- 805 instructions from various sources")
-    text("- Metric: win rate against baseline model (GPT-4 preview) as judged by GPT-4 preview (potential bias?)")
-    text("- Problem: LLM judges favor longer responses, resulted in leaderboard gaming")
-    text("- Alpaca Eval 2.0 used regression to debias the metric "), link("https://arxiv.org/pdf/2404.04475")
-    text("- How do we evaluate the metric?")
-    text("- Correlation with Chatbot Arena (humans) is high:")
-    image("https://github.com/tatsu-lab/alpaca_eval/raw/main/figures/chat_correlations_no_ae.png", width=500)
-    image("images/alpacaeval-leaderboard.png", width=400)
-
-    text("**WildBench** "), link("https://arxiv.org/pdf/2406.04770")
-    text("- Sourced 1024 examples from 1M human-chatbot conversations")
-    text("- Uses GPT-4 turbo as a judge with a checklist (like CoT for judging) + GPT-4 as a judge")
-    text("- Well-correlated with Chatbot Arena (seems to be the de facto sanity check)")
-    image("images/wildbench.png", width=700)
-    link(title="HELM WildBench for visualizing predictions", url="https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/wildbench")
-
-    text("Summary:")
-    text("- Challenge: how to evaluate open-ended responses?")
-    text("- Pairwise comparisons between similar responses provide higher signal")
-    text("- Beware of biases (both from humans and LLM judges)")
-    text("- Checklist/rubric improves reliability (regardless of human or LLM judge)")
-
-
-def agentic_benchmarks():
-    text("Previously: evaluate what LMs say (chat)")
-    text("Now: evaluate what LMs do (agents)")
-
-    text("Agent = language model + agent scaffold (logic for deciding how to use the LM)")
-    
-    text("Consider tasks that require tool use (e.g., running code) and iterating over a period of time")
-
-    text("**SWEBench** "), link("https://arxiv.org/abs/2310.06770")
-    text("- 2294 tasks across 12 Python repositories")
-    text("- Given codebase + issue description, submit a PR")
-    text("- Evaluation metric: unit tests")
-    image("images/swebench.png", width=800)
-    link("https://llm-stats.com/benchmarks/swe-bench-verified")
-
-    text("**TerminalBench** "), link("https://arxiv.org/abs/2601.11868"), link(title="website", url="https://www.tbench.ai/")
-    image("images/terminal-bench.png", width=700)
-    text("- Computer terminal environments: simple and universal")
-    text("- 229 tasks crowdsourced from 93 contributors, 89 tasks constitute Terminal-Bench 2.0")
-    image("images/terminal-bench-human-time.png", width=600)
-    image("images/terminal-bench-results.png", width=600)
-    link("https://llm-stats.com/benchmarks/terminal-bench")
-
-    text("**CyBench** "), link("https://arxiv.org/abs/2408.08926")
-    image("images/cybench.png", width=700)
-    text("- 40 Capture the Flag (CTF) tasks")
-    text("- Use first-solve time as a measure of difficulty")
-    image("images/cybench-agent.png", width=700)
-    image("images/cybench-results.png", width=600)
-    link("https://llm-stats.com/benchmarks/cybench")
-
-    text("**MLEBench** "), link("https://arxiv.org/abs/2410.07095")
-    text("- 75 Kaggle competitions (require training models, processing data, etc.)")
-    image("images/mlebench.png", width=800)
-    image("images/mlebench-results.png", width=700)
-
-    text("Agent scaffolds "), post_link("https://www.philschmid.de/agents-2.0-deep-agents")
-    image("https://www.philschmid.de/static/blog/agents-2.0-deep-agents/overview.png", width=400)
-    text("- Explicit planning: keep a todo list that gets checked off")
-    text("- Hierarchical delegation: agents calling other sub-agents (clean context)")
-    text("- Persistent memory: read/write files")
-    text("- Extreme context engineering: explicit more instructions on process")
-
-    text("Summary:")
-    text("- Agents dramatically enhance the capability surface of language models")
-    text("- Agent scaffolds are very important")
-    text("- Evaluating agents = evaluating agent scaffold + language model")
-
-
-def pure_reasoning_benchmarks():
-    text("- All of the tasks so far require linguistic and world knowledge.")
-    text("- Can we isolate **reasoning** from knowledge?")
-    text("- Arguably, reasoning captures a more pure form of intelligence (isn't just about memorizing facts).")
-
-    text("**ARC-AGI** "), link(title="website", url="https://arcprize.org/arc-agi")
-    text("- 100\% solvable by humans, but challenging for AI")
-    text("- Each task is unique, so memorization doesn't help.")
-
-    text("- ARC-AGI-1 (2019): first iteration")
-    image("https://arcprize.org/media/images/arc-task-grids.jpg", width=800)
-
-    text("- ARC-AGI-2 (March 2025): more multi-step reasoning")
-    image("https://arcprize.org/media/images/blog/arc-agi-2-unsolved-1.png", width=800)
-
-    image("images/arc-agi-results.png", width=700)
-    text("- Pretrained language models didn't move the needle")
-    text("- Reasoning models (o1, o3) started making things take off")
-
-    text("- ARC-AGI-3 (March 2026): interactive environments "), post_link("https://arcprize.org/media/ARC_AGI_3_Technical_Report.pdf")
-    image("images/arc-agi-3.png", width=300)
-    image("images/arc-agi-3-results.png", width=500)
-
-    text("Summary:")
-    text("- Goal is to disentangle reasoning from knowledge (difficult to do!)")
-    text("- Constrained to human reasoning (not superhuman reasoning)")
-    text("- Clearly exposes gaps in current models")
-
-
-def safety_benchmarks():
-    image("https://www.team-bhp.com/forum/attachments/road-safety/2173645d1625144681-will-crash-test-rating-change-if-higher-variant-chosen-images-30.jpeg", width=400)
-    text("What does safety mean for AI?")
-
-    text("**HarmBench** "), link("https://arxiv.org/abs/2402.04249")
-    text("- Based on 510 harmful behaviors that violate laws or norms")
-    link(title="HarmBench on HELM", url="https://crfm.stanford.edu/helm/safety/latest/#/leaderboard/harm_bench")
-    link(title="Example of safety failure", url="https://crfm.stanford.edu/helm/safety/latest/#/runs/harm_bench:model=anthropic_claude-3-7-sonnet-20250219?instancesPage=4")
-
-    text("**AIR-Bench** "), link("https://arxiv.org/abs/2407.17436")
-    text("- Based on regulatory frameworks and company policies")
-    text("- Taxonomized into 314 risk categories, 5694 prompts")
-    image("https://crfm.stanford.edu/helm/assets/air-overview-DpBbyagA.png", width=800)
-    link(title="HELM AIR-Bench", url="https://crfm.stanford.edu/helm/air-bench/latest/#/leaderboard")
-
-    text("Jailbreaking:")
-    text("- Language models are trained to refuse harmful instructions")
-    text("- Greedy Coordinate Gradient (GCG) automatically optimizes prompts to bypass safety "), link("https://arxiv.org/pdf/2307.15043")
-    text("- Transfers from open-weight models (Llama) to closed models (GPT-4)")
-    image("images/gcg-examples.png", width=800)
-
-    text("What is safety?")
-    text("- Many aspects of safety are strongly contextual (politics, law, social norms - which vary across countries)")
-    text("- Many risks are quite varied (hallucinations, sycophancy, abetting crimes, inequality, losing critical thinking)")
-
-    text("**Dual-use**: capable cybersecurity agents (Mythos) can be used to hack into a system or to do penetration testing")
-
-
-def realism():
-    text("**Ecological validity**: how well does an evaluation capture real-world use?")
-    text("- Exam benchmarks (e.g., GPQA) are far away from real-world use.")
-    text("- Chatbot Arena prompts are from real people, but distribution is uncontrolled.")
-
-    text("**GDPVal** (OpenAI) "), link("https://arxiv.org/pdf/2510.04374")
-    text("- 44 occupations from top 9 sectors according to US GDP")
-    text("- Tasks come from professionals with ~14 years of experience")
-    image("images/gdpval.png", width=700)
-
-    text("**MedHELM** "), link("https://arxiv.org/abs/2505.23802")
-    text("- Previous medical benchmarks were based on standardized exams")
-    text("- 121 clinical tasks sourced from 29 clinicians, mixture of private and public datasets")
-    image("https://crfm.stanford.edu/helm/assets/medhelm-overview-CND0EIsy.png", width=700)
-    link(title="MedHELM", url="https://crfm.stanford.edu/helm/medhelm/latest/#/leaderboard")
-
-    text("**Clio** (Anthropic) "), link("https://arxiv.org/abs/2412.13678")
-    text("- Use language models to analyze real user data")
-    text("- Share general patterns of what people are asking")
-    image("images/clio-table4.png", width=700)
-
-    text("Unfortunately, realism and privacy are sometimes at odds with each other.")
-
-
-def validity():
-    text("How do we know our evaluations are valid?")
-
-    text("### Train-test overlap")
-    text("- Machine learning 101: don't train on your test set")
-    text("- Pre-foundation models (ImageNet, SQuAD): well-defined train-test splits")
-    text("- Today: train on the Internet and don't tell people about your data")
-
-    text("Route 1: try to infer train-test overlap from model")
-    text("- Exploit exchangeability of data points "), link("https://arxiv.org/pdf/2310.17623")
-    image("images/contamination-exchangeability.png", width=500)
-
-    text("Route 2: encourage reporting norms (e.g., people report confidence intervals)")
-    text("- Model providers should report train-test overlap "), link("https://arxiv.org/abs/2410.08385")
-
-    text("Route 3: use fresh evals")
-    text("- LiveCodeBench, UncheatableEval: scrape new webpages")
-    text("- Timestamps aren't always safe due to copying either")
-
-    text("Route 4: use private evals")
-    text("- Companies use internal code bases that aren't on the Internet")
-    text("- Use your personal writings")
-    text("- Easiest for perplexity")
-
-    text("### Dataset quality")
-    text("- Fixed up SWE-Bench to produce SWE-Bench Verified "), post_link("https://openai.com/index/introducing-swe-bench-verified/")
-    text("- Create Platinum versions of benchmarks "), link("https://arxiv.org/abs/2502.03461")
-    image("https://pbs.twimg.com/media/GjICXQlWkAAYnDS?format=jpg&name=4096x4096", width=700)
-    image("https://pbs.twimg.com/media/GjICcGQXYAAM4o1?format=jpg&name=4096x4096", width=800)
-    text("- Problems with agentic benchmarks: insufficient test cases, trivial agent can solve task "), link("https://arxiv.org/abs/2507.02825")
-    text("- Docent: use LLM to inspect agent traces to detect problems "), post_link("https://transluce.org/introducing-docent")
-
-
-def how_to_think_about_evaluation():
-    text("### What's the point of evaluation?")
-    text("There is no one true evaluation; it depends on what question you're trying to answer.")
-    text("1. User or company wants to make a purchase decision (model A or model B) for their use case (e.g., customer service chatbots).")
-    text("2. Researchers want to measure the raw capabilities of a model (e.g., intelligence).")
-    text("3. We want to understand the benefits + harms of a model (for business and policy reasons).")
-    text("4. Model developers want to get feedback to improve the model.")
-
-    text("### What are we evaluating?")
-    text("- Pre-foundation models, we evaluated **methods** (standardized train-test splits).")
-    text("- Today, we're (mostly) evaluating **models/systems** (anything goes).")
-
-    text("There are some exceptions...")
-    text("- nanogpt speedrun: fixed data, compute time to get to a particular validation loss")
-    image("images/karpathy-nanogpt-speedrun.png", width=600), post_link("https://x.com/karpathy/status/1846790537262571739")
-
-    text("Evaluating methods encourage algorithmic innovation from researchers.")
-    text("Evaluating models/systems is useful for downstream users.")
-
-    text("Either way, we need to define the rules of the game!")
-```
-
-## 什么是“好”？ (What is good?)
-
-```python
-what_is_good()
-```
-
-评估似乎是一个机械的过程：
-1. 定义一些提示词
-2. 将提示词发送给模型并获取回复
-3. 计算准确率
-
-但实际上，评估是一个深奥且重要的课题……
-……它塑造了 AI 的发展。
-
-**核心挑战**：<font color="red">抽象概念 (abstract construct)</font> → <font color="blue">具体指标 (concrete metric)</font>
-
-也许一个模型如果能在基准测试上表现良好，它就是好的……
+# 第 12 讲：模型评估 (Evaluation)
+
+> **核心议题**：给定一个训练好的语言模型，我们该如何科学、客观、全面地衡量它到底有“多好”？
+
+- **已学内容体系**：我们已经系统讲解了语言模型训练的方方面面（模型架构、优化算法、系统并行、扩展定律）。
+
+- **关键缺失拼图**：模型究竟应该在**什么样的数据**上进行训练？
+
+- **数据塑造能力**：训练数据直接决定了模型的行为特征与能力边界（代码生成？多语言翻译？生物 DNA 序列建模？）。
+
+- **逻辑先决条件**：在深入探讨数据工程之前，我们必须首先明确：**我们期望模型展现出怎样的具体能力与行为？**
+
+
+
+### 什么是评估 (Evaluation)？
+
+> **评估的核心问题**：给定一个训练好的模型，它究竟有“**多好**”？
+
+
+
+### 评估的表象与实质
+
+表面上看，大模型评估似乎只是一个标准化的机械流程：
+
+1. **准备测试提示**：定义一批测试提示词 (Prompts)
+
+2. **模型生成**：输入模型并收集输出回复 (Responses)
+
+3. **计算准确率**：对照标准答案计算准确率或得分 (Accuracy)
+
+但实际上，**模型评估是一个极其深刻、复杂且影响深远的前沿课题……**
+
+……正是评估标准与基准排行榜的演进，直接引导并塑造了整个人工智能行业的技术发展路线。
+
+> **评估的核心挑战**：如何将人类期望的<font color="red">抽象概念 (Abstract Construct，如“聪明”、“有用”、“安全”)</font> 转化为计算机可精确计算的<font color="blue">具体量化指标 (Concrete Metric)</font>？
+
+#### 维度 1：基准测试得分 (Benchmark Performance)
+如果一个模型在各类标准化基准题库上得分很高，它就是个好模型吗？
+
 [Artificial Analysis](https://artificialanalysis.ai/)
-![](images/artificial-analysis.png)
 
-也许一个模型如果能在基准测试上表现良好且运行便宜，它就是好的……
-![](images/artificial-analysis-cost.png)
+<img src="images/artificial-analysis.png" width="800" />
 
-也许一个模型如果人们更喜欢它的回复，它就是好的……
+#### 维度 2：性价比与推理成本 (Cost-Efficiency)
+如果模型不仅能力出众，而且单次调用的推理 Token 开销极低（极具性价比），它是个好模型吗？
+
+<img src="images/artificial-analysis-cost.png" width="800" />
+
+#### 维度 3：人类主观偏好 (Human Preference)
+如果真实用户在双盲盲测中更喜欢它的回复风格与回答质量，它是个好模型吗？
+
 [Arena AI (formerly Chatbot Arena)](https://arena.ai/leaderboard)
-![](images/lmarena-leaderboard.png)
 
-也许一个模型如果人们仅仅选择使用（并付费）它，它就是好的……
+<img src="images/lmarena-leaderboard.png" width="400" />
+
+#### 维度 4：真实市场占有率 (Market Adoption)
+如果全球开发者和企业用脚投票，频繁调用 API 并愿意真金白银为其付费，它是个好模型吗？
+
 [OpenRouter](https://openrouter.ai/rankings)
-![](images/openrouter.png)
 
-## 困惑度 (Perplexity)
+<img src="images/openrouter.png" width="600" />
 
-```python
-perplexity()
-```
 
-- 回顾：语言模型是 token 序列上的概率分布 **p(x)**。
-- 困惑度 (Perplexity, (1/p(D))^(1/|D|)) 衡量 p 是否给某个数据集 D 分配了高概率。
 
-- 在预训练中，你会最小化训练集上的困惑度。
-- 显而易见的方法是衡量测试集上的困惑度。
-- 这正是传统语言模型研究中的做法。
+- **回顾概率本质**：语言模型在数学上是定义在 Token 序列上的联合概率分布 **$p(x)$**。
 
-标准数据集：
-- Penn Treebank (WSJ)
-- WikiText-103 (Wikipedia)
-- One Billion Word Benchmark (源自机器翻译 WMT11 - EuroParl、联合国、新闻)
-经典范式：同分布评估 (in-distribution evaluation)：在某个数据集的训练集上训练，并在其测试集上评估。
-One Billion Word Benchmark 上的纯 CNN+LSTM 模型（困惑度 51.3 → 30.0） [https://arxiv.org/abs/1602.02410](https://arxiv.org/abs/1602.02410)
+- **困惑度 (Perplexity, PPL)**：定义为 $(1/p(D))^{1/|D|}$，衡量概率模型 $p$ 为测试集 $D$ 赋予的高概率程度（困惑度越低，预测越准）。
 
-GPT-2:
-- 在 WebText 上进行训练（40GB 文本，源自 Reddit 上 high karma 链接的网页）
-- 在标准数据集上进行零样本（Zero-shot）评估（**分布外**评估，out-of-distribution evaluation）
-![](images/gpt2-perplexity.png)
-- 在迁移学习有帮助的小型数据集（PTB）上表现更好，但在大型数据集（1BW）上表现一般。
+- 预训练的目标函数正是最小化训练集上的困惑度（等价于最小化交叉熵损失）。
 
-困惑度即一切（更多的是信仰而非科学）：
-- 真实分布是 t，模型是 p。
-- 只有当 p = t 时，才能获得最佳的困惑度 H(t)。
-- 如果 p = t，则可以解决所有任务：p(解决方案 | 问题)
-- 因此，通过降低困惑度，我们最终将“到达 AGI”。
+- 最直观的评估手段：在未见过的独立测试集切片上直接测量模型的困惑度。
 
-困惑度也许超出了你的需求：
-- 示例：*Stanford was founded in 1885*（斯坦福大学建于 1885 年）
-- 困惑度惩罚了对所有 token 的预测，其中一些（例如 *founded*）可能并不重要。
-- 解决方案：衡量条件困惑度 p(回复 | 提示词)^(1/|回复|)
+- 这也是传统统计语言模型与早期 NLP 研究中的标准黄金指标。
 
-有些基准测试实际上是伪装的困惑度测试：
-- 完形填空任务（填空）：LAMBADA [https://arxiv.org/abs/1606.06031](https://arxiv.org/abs/1606.06031)
-![](images/lambada.png)
-- 多选题句子补全：HellaSwag [https://arxiv.org/pdf/1905.07830](https://arxiv.org/pdf/1905.07830)
-![](images/hellaswag.png)
+经典的语言模型基准数据集：
 
-**警告**（如果你正在运营一个困惑度排行榜）：
-- 用户提交 `LM`，你计算 `log_prob = LM(test_data)`
-- 你需要信任概率是有效的（总和为 1）
-- 对于下游任务，`response = LM(prompt)` 并计算 `response` 的准确率
+- **Penn Treebank (PTB)**：华尔街日报金融语料
 
-总结：
-- 困惑度在语言模型开发中仍然被重度使用（平滑的缩放定律，scaling laws）
-- 仍然需要捕捉真实世界情况的基准测试（给那些不相信困惑度信仰的人）……
+- **WikiText-103**：维基百科高质量长文章集合
 
-## 考试基准测试 (Exam benchmarks)
+- **One Billion Word Benchmark (1BW)**：欧洲议会、联合国与国际新闻的大型语料库
 
-```python
-exam_benchmarks()
-```
+**经典同分布评估范式 (In-Distribution Evaluation)**：在同一数据集的 Train 切片上训练，在 Test 切片上验证。
 
-考试是测试语言模型的一种有用方式（就像对人类一样）：
-- 对科目和难度有控制权
-- 设计为具有无歧义的正确答案，易于评分
+经典 CNN+LSTM 架构在 1BW 十亿词基准上的困惑度演进 (51.3 → 30.0)[https://arxiv.org/abs/1602.02410](https://arxiv.org/abs/1602.02410)
 
-**Massive Multitask Language Understanding (MMLU)** [[MMLU 论文]](https://arxiv.org/pdf/2009.03300.pdf)
-- 57 个学科（例如数学、美国历史、法律、道德），多选题
-- “由研究生和本科生从网上免费获取的资源中收集”
-- 尽管名为语言理解，但 MMLU 实际上是关于测试知识，而不是语言理解
-- 在 GPT-3 上使用 Few-shot 提示词进行评估
-![](images/mmlu.png)
-[MMLU 排行榜](https://llm-stats.com/benchmarks/mmlu)
-[用于可视化预测的 HELM MMLU](https://crfm.stanford.edu/helm/mmlu/latest/)
 
-**MMLU-Pro** [https://arxiv.org/abs/2406.01574](https://arxiv.org/abs/2406.01574)
-- 移除了 MMLU 中的噪点/琐碎问题
-- 将 4 个选项扩展到了 10 个选项
-- 使用思维链 (Chain of Thought, CoT) 进行评估（给模型更多的思考机会）
-- 模型的准确率下降了 16% 到 33%（没有那么快饱和）
-![](images/mmlu-pro.png)
-[MMLU-Pro 排行榜](https://llm-stats.com/benchmarks/mmlu-pro)
-[用于可视化预测的 HELM MMLU-Pro](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/mmlu_pro)
 
-**Graduate-Level Google-Proof Q&A (GPQA)** [https://arxiv.org/abs/2311.12022](https://arxiv.org/abs/2311.12022)
-- 问题由来自 Upwork 的 61 名博士外包撰写
-![](images/gpqa.png)
-- 博士专家达到 65% 的准确率
-- 非专家在使用谷歌搜索 30 分钟的情况下达到 34% 的准确率
-- GPT-4 达到 39% 的准确率
-[GPQA 排行榜](https://llm-stats.com/benchmarks/gpqa)
-[用于可视化预测的 HELM GPQA](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/gpqa)
+### GPT-2 开启的零样本/跨分布评估 (Out-of-Distribution)
 
-**Humanity's Last Exam (HLE)** [https://arxiv.org/abs/2501.14249](https://arxiv.org/abs/2501.14249)
-- 2500 个问题：多模态、多学科、多选题 + 简答题
-![](images/hle-examples.png)
-- 给问题创建者提供了 50 万美元的奖金池 + 共同署名权
-- 通过前沿 LLM 过滤，进行多个阶段的审查
-![](images/hle-pipeline.png)
-![](images/hle-results.png)
-[HLE 排行榜](https://llm-stats.com/benchmarks/hle)
+- 在大规模开放网页语料 WebText（40GB，来自 Reddit 社区高赞外链）上进行通用预训练
 
-总结：
-- 随着模型的改进和现有基准测试的饱和，趋势是提出更难的问题
-- 多选题格式可以设计得任意难
-- 无法捕捉真实的使用场景（开放式问题，不一定存在唯一正确答案）
+- **零样本评估**：不经过任何微调，直接在 PTB、1BW 等标准数据集上测试困惑度
 
-## 聊天基准测试 (Chat benchmarks)
+<img src="images/gpt2-perplexity.png" width="800" />
 
-```python
-chat_benchmarks()
-```
+- 发现规律：在小规模数据集 (PTB) 上跨领域泛化优异；但在海量专有语料 (1BW) 上，依然不如直接在该语料内部训练的模型
 
-- 到目前为止，我们一直在评估定义明确的多选题任务。
-- 大多数人不会向他们的 AI 助手提问多选题。
 
-示例：
-提示词：*我想做一份甜菜山羊奶酪沙拉。哪些草药搭配合适，哪些不太合适？*
-回复：*这里是一份甜菜 + 山羊奶酪沙拉中合适（和一些不合适）的草药清单，基于它们如何与甜菜的甜美泥土气味以及山羊奶酪的酸甜奶油味互动……*
 
-**挑战**：如何评估一个开放式回复？
+### “困惑度即一切 (Perplexity is all you need)” 假说
 
-**Chatbot Arena** [https://arxiv.org/abs/2403.04132](https://arxiv.org/abs/2403.04132)
-数据收集：
-- 来自互联网的随机用户输入提示词
-- 他们会得到两个随机（匿名）模型的回复
-- 他们评分哪一个更好
-![](images/arena-beets.png)
-基于成对比较计算 ELO 排名：
-- 定义模型：p(A 赢了 B) = 1 / (1 + 10^((ELO_B - ELO_A)/400))
-- 拟合该模型以最大化成对比较的概率
+- 设真实世界的信息分布为 $t$，语言模型学习到的分布为 $p$。
+
+- 理论最优困惑度下界为信息熵 $H(t)$，当且仅当模型完全捕捉真实分布 $p = t$ 时取得。
+
+- 如果 $p = t$，则一切现实世界任务皆可迎刃而解：只需推导条件概率 $p(\text{答案} \mid \text{问题})$。
+
+- 因此，只要把困惑度推向理论极致，就必然能够通往通用人工智能 (AGI)。
+
+
+
+### 困惑度指标的局限性
+
+- 示例句子：*“Stanford was founded in 1885”*
+
+- 困惑度会对序列中的**每一个 Token** 进行严格惩罚，但很多虚词（如 *was*、*in*）的预测并不影响对核心事实的掌握。
+
+- **改进方案**：引入条件困惑度 $p(\text{回复} \mid \text{提示})^{1/|\text{回复}|}$，只针对生成的核心答案进行惩罚。
+
+
+
+### 伪装成下游任务的困惑度测试
+
+- 完形填空任务 (Cloze Task)：**LAMBADA**（测试长文本上下文下最后一个单词的预测能力）[https://arxiv.org/abs/1606.06031](https://arxiv.org/abs/1606.06031)
+
+<img src="images/lambada.png" width="700" />
+
+- 多项选择句子逻辑补全：**HellaSwag**（测试日常常识推理）[https://arxiv.org/pdf/1905.07830](https://arxiv.org/pdf/1905.07830)
+
+<img src="images/hellaswag.png" width="500" />
+
+> **⚠️ 警示（如果你负责维护困惑度评测榜单）**：
+
+- 参赛者提交模型 `LM`，评测平台调用 `log_prob = LM(test_data)` 计算对数似然。
+
+- 你必须保证模型输出的概率分布在数学上严格归一（总和为 1，防止通过异常缩放 Logits 恶意作弊）。
+
+- 对于真实下游任务，直接让模型自回归生成 `response = LM(prompt)` 并校验结果准确率更加安全稳健。
+
+
+
+### 过滤阶段小结
+
+- **困惑度的重要价值**：在底层模型开发中极其关键（能展现出极为平滑的 Scaling Laws 幂律曲线）。
+
+- **现实需求**：我们需要更丰富多元、贴近人类复杂生产生活真实场景的评测基准……
+
+
+
+## 1. 考试类基准 (Exam Benchmarks)
+
+- **学科与难度可控**：可以灵活覆盖特定学科领域并严格划分难度梯度。
+
+- **客观易判分**：标准答案无歧义，自动化批改效率极高。
+
+### MMLU (大规模多任务语言理解基准)[mmlu_2021 (Berkeley)](https://arxiv.org/pdf/2009.03300.pdf)
+
+- 包含 57 个学科领域（数学、物理、法律、医学、哲学等）的单选题。
+
+- “由高校师生从公开网络考试题库中收集整理”。
+
+- 实质：虽然名字叫语言理解，但本质上主要考核模型的**人类世界百科知识储备**。
+
+- 经典评测方式：使用少样本提示 (Few-shot Prompting) 进行测试。
+
+<img src="images/mmlu.png" width="700" />
+
+[https://llm-stats.com/benchmarks/mmlu](https://llm-stats.com/benchmarks/mmlu)
+
+[HELM MMLU for visualizing predictions](https://crfm.stanford.edu/helm/mmlu/latest/)
+
+### MMLU-Pro (高难度进阶推理基准)[https://arxiv.org/abs/2406.01574](https://arxiv.org/abs/2406.01574)
+
+- 全面剔除原版 MMLU 中的含噪、有歧义与过于基础的题目。
+
+- 选项从 4 选 1 扩展至 10 选 1（大幅削弱蒙猜几率）。
+
+- 全面引入思维链 (Chain of Thought, CoT) 引导长逻辑推理。
+
+- 结果：各大顶尖模型的得分断崖式下跌 16%~33%，有效解决了榜单饱和问题。
+
+<img src="images/mmlu-pro.png" width="700" />
+
+[https://llm-stats.com/benchmarks/mmlu-pro](https://llm-stats.com/benchmarks/mmlu-pro)
+
+[HELM MMLU-Pro for visualizing predictions](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/mmlu_pro)
+
+### GPQA (研究生级别防 Google 检索问答基准)[https://arxiv.org/abs/2311.12022](https://arxiv.org/abs/2311.12022)
+
+- 由 61 位跨学科博士独立命题，专门针对前沿理科学术概念。
+
+<img src="images/gpqa.png" width="700" />
+
+- 对应领域的博士专家盲测基准准确率为 65%。
+
+- 非本专业的普通人即便允许联网 Google 搜索 30 分钟，准确率也仅有 34%。
+
+- 早期 GPT-4 在该基准上仅取得 39% 准确率。
+
+[https://llm-stats.com/benchmarks/gpqa](https://llm-stats.com/benchmarks/gpqa)
+
+[HELM GPQA for visualizing predictions](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/gpqa)
+
+### Humanity's Last Exam (HLE / 人类最后的考试)[https://arxiv.org/abs/2501.14249](https://arxiv.org/abs/2501.14249)
+
+- 包含 2500 道极高难度的跨学科多模态难题（多选与开放简答题）。
+
+<img src="images/hle-examples.png" width="700" />
+
+- 设立 50 万美元巨额奖金池征集顶级难题，题目均经过前沿 LLM 严苛过滤与查重。
+
+- 经过多轮前沿 LLM 与专家交叉评审，确保当前模型无法靠简单记忆检索答对。
+
+<img src="images/hle-pipeline.png" width="700" />
+
+<img src="images/hle-results.png" width="600" />
+
+[https://llm-stats.com/benchmarks/hle](https://llm-stats.com/benchmarks/hle)
+
+
+
+### 过滤阶段小结
+
+- 随着模型能力持续飞跃，基准测试的难度上限在不断被推向极致。
+
+- 选择题形式虽然可以无限提升难度，但无法完全等同于真实场景的复杂综合输出。
+
+- 局限：无法涵盖没有唯一标准答案的开放式对话与协作任务。
+
+
+
+## 2. 开放式对话与偏好评测 (Chat & Preference Benchmarks)
+
+在现实生活中，绝大多数用户使用的是开放式提示词，而非结构化选择题：
+
+示例数据源与候选混合配比：
+
+**用户提示词**：*我想做一道甜菜羊乳酪沙拉。搭配什么香草比较合适，什么香草不合适？*
+
+**模型回复**：*这里为您详细分析适合与不适合甜菜羊奶酪沙拉的香草搭配，结合了甜菜的泥土甜香与奶酪的浓郁微酸……*
+
+> **核心挑战**：对于这种没有绝对标准答案的开放式生成，如何进行客观公正的打分？
+
+### Chatbot Arena (大模型竞技场 / 盲测众包评估)[https://arxiv.org/abs/2403.04132](https://arxiv.org/abs/2403.04132)
+
+数据收集机制：
+
+1. 真实互联网用户输入任意提示词
+
+2. 平台分派两台完全匿名的模型同时生成回答
+
+3. 用户根据回答质量盲测投票选出胜者（或平局）
+
+<img src="images/arena-beets.png" width="700" />
+
+基于成对比较计算全局 ELO 积分：
+
+- 建立 Bradley-Terry 概率模型：$P(A \text{ 胜过 } B) = \frac{1}{1 + 10^{(ELO_B - ELO_A)/400}}$
+
+- 采用最大似然估计拟合数百万场对战记录，解算各大模型的全局 ELO 竞技天梯积分
+
 [Arena AI (formerly Chatbot Arena)](https://arena.ai/leaderboard)
-![](images/lmarena-leaderboard.png)
-特性：
-- 真实世界的提示词（对用户免费，有动力去真正使用它）
-- 但这些人是谁？偏见？垃圾邮件发送者？
-- 二元偏好，但混淆了风格和正确性
-- 人类甚至如何评估正确性？容易产生谄媚（sycophancy）？
-- 特点：不需要向所有模型提供相同的提示词（这很重要，因为是人类在评分）
-- 动态：随着时间的推移加入新的提示词和模型
 
-**AlpacaEval** (2023) [排行榜](https://tatsu-lab.github.io/alpaca_eval/)
-- 来自各种来源的 805 条指令
-- 指标：由 GPT-4 preview 评判的针对基线模型（GPT-4 preview）的胜率（潜在的偏见？）
-- 问题：LLM 裁判更喜欢长回复，导致排行榜被套路（gaming）
-- Alpaca Eval 2.0 使用回归来消除指标的偏见 [https://arxiv.org/pdf/2404.04475](https://arxiv.org/pdf/2404.04475)
-- 我们如何评估指标本身？
-- 与 Chatbot Arena (人类) 的相关性很高：
-![](https://github.com/tatsu-lab/alpaca_eval/raw/main/figures/chat_correlations_no_ae.png)
-![](images/alpacaeval-leaderboard.png)
+<img src="images/lmarena-leaderboard.png" width="400" />
 
-**WildBench** [https://arxiv.org/pdf/2406.04770](https://arxiv.org/pdf/2406.04770)
-- 从 100 万次人机对话中筛选出 1024 个示例
-- 使用 GPT-4 turbo 作为带有清单（checklist，类似于用于裁判的 CoT）的裁判 + GPT-4 作为裁判
-- 与 Chatbot Arena 强相关（似乎是事实上的合理性检查）
-![](images/wildbench.png)
-[HELM WildBench 预测可视化](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/wildbench)
+Chatbot Arena 的优势与局限：
 
-总结：
-- 挑战：如何评估开放式回复？
-- 相似回复之间的成对比较能提供更强的信号
-- 警惕偏见（来自人类和 LLM 裁判的偏见）
-- 清单/标准评估可以提高可靠性（无论人类还是 LLM 裁判）
+- **高生态真实性**：完全来自真实大众的使用需求（因为对用户免费且体验好）。
 
-## 智能体基准测试 (Agentic benchmarks)
+- **人群与偏见风险**：大众用户专业度差异大，容易受到主观偏见和恶意刷票影响。
 
-```python
-agentic_benchmarks()
-```
+- **风格与事实混淆**：人类倾向于给排版更漂亮、回答更冗长自信的回复投票，即便其包含事实错误（Sycophancy 谄媚现象）。
 
-以前：评估语言模型说了什么（聊天）
-现在：评估语言模型做了什么（智能体）
+- 人类评审员如何判断复杂事实的准确性？模型是否容易通过迎合用户偏见来骗取选票？
 
-智能体 (Agent) = 语言模型 + 智能体脚手架 (Agent Scaffold, 用于决定如何使用 LM 的逻辑)
+- **动态自适应**：无需所有模型回答完全相同的题库，随时间灵活纳入新模型与新提示词。
 
-考虑需要使用工具（例如运行代码）并在一段时间内进行迭代的任务
+- 保持持续更新，天然具备抵抗数据污染的能力。
 
-**SWEBench** [https://arxiv.org/abs/2310.06770](https://arxiv.org/abs/2310.06770)
-- 跨 12 个 Python 仓库的 2294 个任务
-- 给定代码库 + 问题描述，提交一个 PR（拉取请求）
-- 评估指标：单元测试
-![](images/swebench.png)
-[SWE-Bench Verified 排行榜](https://llm-stats.com/benchmarks/swe-bench-verified)
+**AlpacaEval (以 LLM 作为裁判的自动化评估, 2023)**[leaderboard](https://tatsu-lab.github.io/alpaca_eval/)
 
-**TerminalBench** [https://arxiv.org/abs/2601.11868](https://arxiv.org/abs/2601.11868) | [网站](https://www.tbench.ai/)
-![](images/terminal-bench.png)
-- 计算机终端环境：简单且通用
-- 229 个任务由 93 名贡献者众包完成，其中 89 个任务构成了 Terminal-Bench 2.0
-![](images/terminal-bench-human-time.png)
-![](images/terminal-bench-results.png)
-[Terminal-Bench 排行榜](https://llm-stats.com/benchmarks/terminal-bench)
+- 包含 805 条精选的多样化指令集
 
-**CyBench** [https://arxiv.org/abs/2408.08926](https://arxiv.org/abs/2408.08926)
-![](images/cybench.png)
-- 40 个夺旗赛（CTF）任务
-- 使用首次解决时间来衡量难度
-![](images/cybench-agent.png)
-![](images/cybench-results.png)
-[CyBench 排行榜](https://llm-stats.com/benchmarks/cybench)
+- 指标：以强大的大模型作为裁判，计算各被测模型相对于基线模型的胜率 (Win Rate)
 
-**MLEBench** [https://arxiv.org/abs/2410.07095](https://arxiv.org/abs/2410.07095)
-- 75 个 Kaggle 竞赛（需要训练模型、处理数据等）
-![](images/mlebench.png)
-![](images/mlebench-results.png)
+- **长度偏差 (Length Bias)**：LLM 裁判严重偏好更长的冗长回复，导致榜单被刻意刷分。
 
-智能体脚手架 [post](https://www.philschmid.de/agents-2.0-deep-agents)
-![](https://www.philschmid.de/static/blog/agents-2.0-deep-agents/overview.png)
-- 显式规划：保留一个不断被核对的待办事项列表 (todo list)
-- 分层授权 (Hierarchical delegation)：智能体调用其他子智能体（保持上下文干净）
-- 持久内存：读/写文件
-- 极端上下文工程：关于流程的显式指导
+- Alpaca Eval 2.0 used regression to debias the metric[https://arxiv.org/pdf/2404.04475](https://arxiv.org/pdf/2404.04475)
 
-总结：
-- 智能体极大增强了语言模型的能力范围
-- 智能体脚手架（scaffold）非常重要
-- 评估智能体 = 评估智能体脚手架 + 语言模型
+- 我们如何评估这一评估指标本身的科学性？
 
-## 纯推理基准测试 (Pure reasoning benchmarks)
+- 检验标准：与 Chatbot Arena 真实人类盲测排名的相关系数极高：
 
-```python
-pure_reasoning_benchmarks()
-```
+<img src="https://github.com/tatsu-lab/alpaca_eval/raw/main/figures/chat_correlations_no_ae.png" width="500" />
 
-- 到目前为止，所有的任务都需要语言和世界知识。
-- 我们可以将**推理**与知识分离开来吗？
-- 可以说，推理捕捉了更纯粹的智能形式（而不仅仅是记忆事实）。
+<img src="images/alpacaeval-leaderboard.png" width="400" />
 
-**ARC-AGI** [website](https://arcprize.org/arc-agi)
-- 人类 100% 可解，但对 AI 极具挑战
-- 每个任务都是独特的，因此记忆没有用处。
+### WildBench (真实多轮对话综合基准)[https://arxiv.org/pdf/2406.04770](https://arxiv.org/pdf/2406.04770)
 
-- ARC-AGI-1 (2019)：第一次迭代
-![](https://arcprize.org/media/images/arc-task-grids.jpg)
+- 从 100 万真实人机对话中提炼出的 1024 个高难度测试样本
 
-- ARC-AGI-2 (2025 年 3 月)：更多多步推理
-![](https://arcprize.org/media/images/blog/arc-agi-2-unsolved-1.png)
+- 引入结构化核对清单 (Checklist) 指导裁判大模型逐步打分，大幅提升裁决可靠性
 
-![](images/arc-agi-results.png)
-- 预训练语言模型未能取得突破
-- 推理模型（o1、o3）开始使曲线起飞
+- 与 Chatbot Arena 人类盲测榜单呈现出极强的正相关性
 
-- ARC-AGI-3 (2026 年 3 月)：交互式环境 [post](https://arcprize.org/media/ARC_AGI_3_Technical_Report.pdf)
-![](images/arc-agi-3.png)
-![](images/arc-agi-3-results.png)
+<img src="images/wildbench.png" width="700" />
 
-总结：
-- 目标是将推理与知识解耦（这很难做到！）
-- 受限于人类推理能力（而非超人推理）
-- 清楚地暴露了当前模型的差距
+[HELM WildBench for visualizing predictions](https://crfm.stanford.edu/helm/capabilities/latest/#/leaderboard/wildbench)
 
-## 安全基准测试 (Safety benchmarks)
 
-```python
-safety_benchmarks()
-```
 
-![](https://www.team-bhp.com/forum/attachments/road-safety/2173645d1625144681-will-crash-test-rating-change-if-higher-variant-chosen-images-30.jpeg)
-对 AI 来说安全意味着什么？
+### 过滤阶段小结
 
-**HarmBench** [https://arxiv.org/abs/2402.04249](https://arxiv.org/abs/2402.04249)
-- 基于 510 种违反法律或规范的有害行为
-[HELM 上的 HarmBench](https://crfm.stanford.edu/helm/safety/latest/#/leaderboard/harm_bench)
-[安全失败示例](https://crfm.stanford.edu/helm/safety/latest/#/runs/harm_bench:model=anthropic_claude-3-7-sonnet-20250219?instancesPage=4)
+- **核心挑战**：如何对开放式生成进行客观、低方差的评估？
 
-**AIR-Bench** [https://arxiv.org/abs/2407.17436](https://arxiv.org/abs/2407.17436)
-- 基于监管框架和公司政策
-- 分类为 314 个风险类别，共 5694 个提示词
-![](https://crfm.stanford.edu/helm/assets/air-overview-DpBbyagA.png)
+- **成对对比**：成对对比相比单点绝对打分能够提供高得多的判别信号
+
+- **警惕偏见**：时刻防范来自人类或 LLM 裁判的长度偏见与自我偏好
+
+- **核对准则**：制定详尽的评分细则与清单 (Rubric/Checklist) 是提升评估一致性的关键
+
+
+
+## 3. 智能体基准 (Agentic Benchmarks)
+
+从评估模型**说了什么**转向评估模型**在真实环境中做了什么**：
+
+> **智能体 (Agent)** = 底座语言模型 (LLM) + 智能体脚手架系统 (Agent Scaffold / 编排控制逻辑)
+
+考核需在真实环境中调用工具（终端命令、文件读写、代码调试）并长时间多轮迭代的复杂任务：
+
+### SWE-bench (真实软件工程修复基准)[https://arxiv.org/abs/2310.06770](https://arxiv.org/abs/2310.06770)
+
+- 来自 12 个大型流行开源 Python 仓库的 2294 个真实 GitHub Issue 与代码补丁
+
+- 任务：智能体自主阅读代码、复现 Bug、修改代码并提交有效 PR
+
+- 验证标准：通过仓库原本自带的完整单元回归测试
+
+<img src="images/swebench.png" width="800" />
+
+[https://llm-stats.com/benchmarks/swe-bench-verified](https://llm-stats.com/benchmarks/swe-bench-verified)
+
+### Terminal-Bench (通用计算机终端任务基准)[https://arxiv.org/abs/2601.11868](https://arxiv.org/abs/2601.11868)[website](https://www.tbench.ai/)
+
+<img src="images/terminal-bench.png" width="700" />
+
+- 基于纯粹的 Linux 终端环境：最通用的智能体数字交互界面
+
+- 涵盖环境配置、故障诊断、管线搭建等真实系统工程运维任务
+
+<img src="images/terminal-bench-human-time.png" width="600" />
+
+<img src="images/terminal-bench-results.png" width="600" />
+
+[https://llm-stats.com/benchmarks/terminal-bench](https://llm-stats.com/benchmarks/terminal-bench)
+
+### CyBench (网络安全夺旗攻防基准)[https://arxiv.org/abs/2408.08926](https://arxiv.org/abs/2408.08926)
+
+<img src="images/cybench.png" width="700" />
+
+- 包含 40 项专业的网络安全夺旗赛 (CTF) 攻防实战挑战
+
+- 以初次攻破用时作为能力衡量指标
+
+<img src="images/cybench-agent.png" width="700" />
+
+<img src="images/cybench-results.png" width="600" />
+
+[https://llm-stats.com/benchmarks/cybench](https://llm-stats.com/benchmarks/cybench)
+
+### MLE-bench (机器学习工程实战基准)[https://arxiv.org/abs/2410.07095](https://arxiv.org/abs/2410.07095)
+
+- 涵盖 75 项真实的 Kaggle 竞赛（从数据预处理到特征工程与模型微调）
+
+<img src="images/mlebench.png" width="800" />
+
+<img src="images/mlebench-results.png" width="700" />
+
+Agent scaffolds [相关帖子](https://www.philschmid.de/agents-2.0-deep-agents)
+
+<img src="https://www.philschmid.de/static/blog/agents-2.0-deep-agents/overview.png" width="400" />
+
+- **显式规划 (Explicit Planning)**：维护动态任务清单，步步为营推进并勾选确认
+
+- **分层委托 (Hierarchical Delegation)**：主智能体按职责调度子智能体协作（保持上下文整洁）
+
+- **持久化记忆 (Persistent Memory)**：利用工作区文件系统沉淀中间状态与长期记忆
+
+- **上下文工程 (Context Engineering)**：针对复杂执行流注入严密的规范与防幻觉指令
+
+
+
+### 过滤阶段小结
+
+- **能力拓展**：智能体架构极大地拓展了语言模型在物理与数字世界中的行动边界
+
+- **脚手架工程至关重要**：脚手架设计的优劣直接决定了智能体在复杂长程任务中的成败
+
+- **综合评估**：评估智能体 = 同时评估底层模型与上层脚手架的系统协同表现
+
+
+
+## 4. 纯逻辑推理基准 (Pure Reasoning Benchmarks)
+
+我们能否将纯粹的**逻辑推理 (Reasoning)** 能力与庞大的百科记忆知识剥离开来？
+
+纯逻辑推理更能反映智能的本质（证明模型不仅仅是在死记硬背事实）。
+
+### ARC-AGI (抽象推理与 AGI 挑战基准)[website](https://arcprize.org/arc-agi)
+
+- 对普通人类而言 100% 简单可解，但对传统 AI 系统极具挑战。
+
+- 每一个网格几何变换任务都是全新生成的视觉逻辑小游戏，单纯背诵语料毫无用处。
+
+- **ARC-AGI-1 (2019)**：初代几何网格推理挑战
+
+<img src="https://arcprize.org/media/images/arc-task-grids.jpg" width="800" />
+
+- **ARC-AGI-2 (2025)**：强化多步组合推理与抽象空间变换
+
+<img src="https://arcprize.org/media/images/blog/arc-agi-2-unsolved-1.png" width="800" />
+
+<img src="images/arc-agi-results.png" width="700" />
+
+- 传统预训练语言模型（即便参数量巨大）在此类任务上几乎毫无建树
+
+- **突破**：具备深度长思维链强化学习推理的模型（如 o1, o3, DeepSeek-R1）使 ARC 得分产生质的飞跃
+
+- ARC-AGI-3 (March 2026): interactive environments [相关帖子](https://arcprize.org/media/ARC_AGI_3_Technical_Report.pdf)
+
+<img src="images/arc-agi-3.png" width="300" />
+
+<img src="images/arc-agi-3-results.png" width="500" />
+
+
+
+### 过滤阶段小结
+
+- **目标**：将推理与知识剥离（极具学术挑战！）
+
+- **范围限定**：限制在人类日常认知推理范畴内（非超人类超维数学问题）
+
+- **暴露断层**：清晰暴露出当前大模型在系统 2 思考模式下的短板
+
+
+
+<img src="images/crash-test-rating.jpeg" width="400" />
+
+
+
+## 5. 安全性评测 (Safety Benchmarks)
+
+### HarmBench (有害行为自动化安全基准)[https://arxiv.org/abs/2402.04249](https://arxiv.org/abs/2402.04249)
+
+- 涵盖 510 项违反法律伦理与公序良俗的恶意行为指令
+
+[HarmBench on HELM](https://crfm.stanford.edu/helm/safety/latest/#/leaderboard/harm_bench)
+
+[Example of safety failure](https://crfm.stanford.edu/helm/safety/latest/#/runs/harm_bench:model=anthropic_claude-3-7-sonnet-20250219?instancesPage=4)
+
+### AIR-Bench (基于法规与治理框架的安全评测)[https://arxiv.org/abs/2407.17436](https://arxiv.org/abs/2407.17436)
+
+- 基于全球监管政策与企业风控红线构建，细分为 314 个风险类别与 5694 条测试提示
+
+- 细致分类为 314 个风险子类别，包含 5694 条专业攻击测试提示词
+
+<img src="https://crfm.stanford.edu/helm/assets/air-overview-DpBbyagA.png" width="800" />
+
 [HELM AIR-Bench](https://crfm.stanford.edu/helm/air-bench/latest/#/leaderboard)
 
-越狱 (Jailbreaking)：
-- 语言模型经过训练，会拒绝有害的指令
-- 贪婪坐标梯度 (Greedy Coordinate Gradient, GCG) 自动优化提示词以绕过安全限制 [https://arxiv.org/pdf/2307.15043](https://arxiv.org/pdf/2307.15043)
-- 可以从开源权重模型（Llama）迁移到闭源模型（GPT-4）
-![](images/gcg-examples.png)
 
-什么是安全？
-- 安全的许多方面具有强烈的上下文相关性（政治、法律、社会规范——因国家而异）
-- 许多风险截然不同（幻觉、谄媚、协助犯罪、不平等、丧失批判性思维）
 
-**双重用途 (Dual-use)**：功能强大的网络安全智能体（如 Mythos）既可以用于黑客入侵系统，也可以用于做渗透测试。
+### 越狱攻击与防护 (Jailbreaking)
 
-## 现实性 (Realism)
+- 经过对齐训练的模型学会了主动拒绝有害指令。
 
-```python
-realism()
-```
+- **GCG 越狱攻击**：通过贪心坐标梯度优化自动生成对抗性后缀，诱导模型绕过安全护栏[https://arxiv.org/pdf/2307.15043](https://arxiv.org/pdf/2307.15043)
 
-**生态有效性 (Ecological validity)**：评估能在多大程度上捕获真实世界的使用情况？
-- 考试基准测试（如 GPQA）距离真实世界的使用非常遥远。
-- Chatbot Arena 的提示词来自真实用户，但其分布不受控制。
+- **攻击可迁移性**：在开源模型（如 Llama）上生成的对抗提示能够成功迁移攻破闭源商业模型（如 GPT-4）。
 
-**GDPVal** (OpenAI) [https://arxiv.org/pdf/2510.04374](https://arxiv.org/pdf/2510.04374)
-- 涵盖根据美国 GDP 排名前 9 大行业的 44 种职业
-- 任务来自拥有大约 14 年经验的专业人士
-![](images/gdpval.png)
+<img src="images/gcg-examples.png" width="800" />
 
-**MedHELM** [https://arxiv.org/abs/2505.23802](https://arxiv.org/abs/2505.23802)
-- 以前的医学基准测试主要基于标准化考试
-- 121 个临床任务，来源于 29 位临床医生，混合了私有和公开数据集
-![](https://crfm.stanford.edu/helm/assets/medhelm-overview-CND0EIsy.png)
+什么是真正的 AI 安全？
+
+- 安全具有高度的**情境相关性**（政治、法律、文化习惯在不同地区差异巨大）。
+
+- 风险具有多元性（幻觉、谄媚、诱导犯罪、偏见以及削弱人类批判性思维等）。
+
+**双重用途 (Dual-Use) 困境**：顶尖的网络安全智能体既可以用于合法的安全防御渗透测试，也可以被武器化用于恶意黑客入侵。
+
+
+
+## 6. 生态有效性与真实性 (Ecological Validity & Realism)
+
+- 标准化考试单选题（如 GPQA）与真实工作流存在显著脱节。
+
+- 竞技场虽然来自真人，但提示词质量与领域分布完全不可控。
+
+### GDPVal (OpenAI GDP 核心行业生产力评测)[https://arxiv.org/pdf/2510.04374](https://arxiv.org/pdf/2510.04374)
+
+- 覆盖占美国 GDP 前 9 大行业的 44 个核心高价值职业
+
+- 任务均由平均拥有 14 年行业实战经验的资深从业专家精心设计
+
+<img src="images/gdpval.png" width="700" />
+
+### MedHELM (真实临床医疗工作流评测)[https://arxiv.org/abs/2505.23802](https://arxiv.org/abs/2505.23802)
+
+- 传统医疗基准主要考查医师资格考试的选择题
+
+- 联合 29 位一线临床医生构建的 121 项真实医疗任务（病历推断、多源诊断综合）
+
+<img src="https://crfm.stanford.edu/helm/assets/medhelm-overview-CND0EIsy.png" width="700" />
+
 [MedHELM](https://crfm.stanford.edu/helm/medhelm/latest/#/leaderboard)
 
-**Clio** (Anthropic) [https://arxiv.org/abs/2412.13678](https://arxiv.org/abs/2412.13678)
-- 使用语言模型来分析真实用户的数据
-- 分享人们正在问什么的通用模式
-![](images/clio-table4.png)
+### Clio (Anthropic 用户真实交互意图分析)[https://arxiv.org/abs/2412.13678](https://arxiv.org/abs/2412.13678)
 
-不幸的是，真实性（realism）和隐私（privacy）有时是相互矛盾的。
+- 利用高隐私保护的 LLM 分析千万级真实脱敏用户交互
 
-## 有效性 (Validity)
+- 揭示人类在真实生产生活中对大模型的核心诉求分布
 
-```python
-validity()
-```
+<img src="images/clio-table4.png" width="700" />
 
-我们如何知道我们的评估是有效的？
+> ⚠️ **现实困境**：评估的“真实性 (Realism)”与用户的“数据隐私 (Privacy)”往往存在天然的冲突。
 
-### 训练集-测试集重叠 (Train-test overlap)
-- 机器学习基础常识：不要在测试集上进行训练
-- 前基底模型时代（ImageNet, SQuAD）：定义明确的训练-测试集拆分
-- 今天：在整个互联网上训练，并且不透露你的数据
 
-路径 1：尝试从模型中推断训练-测试集重叠
-- 利用数据点的可交换性 [https://arxiv.org/pdf/2310.17623](https://arxiv.org/pdf/2310.17623)
-![](images/contamination-exchangeability.png)
 
-路径 2：鼓励报告规范（例如，报告置信区间）
-- 模型提供商应该报告训练-测试集重叠情况 [https://arxiv.org/abs/2410.08385](https://arxiv.org/abs/2410.08385)
+## 7. 评估有效性与数据污染 (Validity & Contamination)
 
-路径 3：使用新鲜的评估（fresh evals）
-- LiveCodeBench, UncheatableEval：抓取新的网页
-- 由于存在复制，时间戳并不总是绝对安全的
 
-路径 4：使用私有评估
-- 公司使用不在互联网上的内部代码库
-- 使用你个人的写作内容
-- 对困惑度而言最容易实现
 
-### 数据集质量 (Dataset quality)
-- 修改了 SWE-Bench 以产出 SWE-Bench Verified [post](https://openai.com/index/introducing-swe-bench-verified/)
-- 创建基准测试的白金（Platinum）版本 [https://arxiv.org/abs/2502.03461](https://arxiv.org/abs/2502.03461)
-![](https://pbs.twimg.com/media/GjICXQlWkAAYnDS?format=jpg&name=4096x4096)
-![](https://pbs.twimg.com/media/GjICcGQXYAAM4o1?format=jpg&name=4096x4096)
-- 智能体基准测试的问题：测试用例不足，平凡的智能体也能解决任务 [https://arxiv.org/abs/2507.02825](https://arxiv.org/abs/2507.02825)
-- Docent：使用 LLM 检查智能体轨迹以检测问题 [post](https://transluce.org/introducing-docent)
+### 训练集与测试集重叠（数据污染问题）
 
-## 如何看待评估 (How to think about evaluation)
+- **机器学习第一铁律**：严禁在测试集上进行训练！
 
-```python
-how_to_think_about_evaluation()
-```
+- 传统时代：ImageNet、SQuAD 具有清晰严格的 Train/Test 划分。
 
-### 评估的目的是什么？
-不存在唯一的评估标准；这取决于你想回答什么问题。
-1. 用户或公司想要为其使用场景（例如客服聊天机器人）做出购买决策（模型 A 还是模型 B）。
-2. 研究人员想要衡量模型的原始能力（例如智能）。
-3. 我们想要理解模型的益处与危害（基于商业和政策原因）。
-4. 模型开发者想要获得反馈以改进模型。
+- 大模型时代：模型在海量全网数据上预训练，且数据清单往往高度保密，极易发生基准题目泄露污染。
 
-### 我们在评估什么？
-- 在前基底模型时代，我们评估的是**方法**（标准化的训练-测试拆分）。
-- 今天，我们（大多）评估的是**模型/系统**（一切皆可）。
+- **应对方案 1（模型统计推断）**：利用可交换性检验推断模型是否死记硬背了测试样本
 
-有一些例外……
-- nanogpt speedrun：固定的数据，计算达到特定验证损失所需的时间
-![](images/karpathy-nanogpt-speedrun.png) | [post](https://x.com/karpathy/status/1846790537262571739)
+- 利用测试样本在分布中的可交换性统计检验模型是否产生了记忆泄露[https://arxiv.org/pdf/2310.17623](https://arxiv.org/pdf/2310.17623)
 
-评估方法鼓励研究人员进行算法创新。
-评估模型/系统对下游用户非常有用。
+<img src="images/contamination-exchangeability.png" width="500" />
 
-无论如何，我们需要定义游戏规则！
+- **应对方案 2（行业披露规范）**：推动厂商在技术报告中主动披露去污染指标与置信区间
 
-## 结语 (Takeaways)
+- 呼吁各大模型研发机构在技术报告中主动披露详尽的去污染分析报告[https://arxiv.org/abs/2410.08385](https://arxiv.org/abs/2410.08385)
 
-- 不存在唯一的评估标准；请根据你想衡量的内容选择评估方式。
-- 明确定义游戏规则（方法 vs 模型 vs 智能体）。
-- 考量因素：难度、现实性、有效性。
+- **应对方案 3（动态题库）**：构建随时间持续抓取新题的动态基准
+
+- LiveCodeBench、UncheatableEval：持续抓取最新编程竞赛与网页新闻作为动态测试集
+
+- 注意：时间戳也并非绝对安全（因网络存在大量陈旧内容的搬运转发）
+
+- **应对方案 4（私有化评测）**：使用完全不公开于公网的企业私有代码库或个人未公开笔记测试困惑度
+
+- 企业使用完全保密的内部私有代码库进行回归评测
+
+- 使用个人未公开的写作与笔记
+
+- 对于测量困惑度而言最简单有效
+
+
+
+### 评测集本身的质量缺陷与审计
+
+- Fixed up SWE-Bench to produce SWE-Bench Verified [相关帖子](https://openai.com/index/introducing-swe-bench-verified/)
+
+- 为 GSM8K 等经典基准剔除标注错误，制作“白金版 (Platinum)”高质量子集[https://arxiv.org/abs/2502.03461](https://arxiv.org/abs/2502.03461)
+
+<img src="https://pbs.twimg.com/media/GjICXQlWkAAYnDS?format=jpg&name=4096x4096" width="700" />
+
+<img src="https://pbs.twimg.com/media/GjICcGQXYAAM4o1?format=jpg&name=4096x4096" width="800" />
+
+- 智能体基准漏洞：测试用例覆盖不足，导致极简的无效 Agent 偶然通过[https://arxiv.org/abs/2507.02825](https://arxiv.org/abs/2507.02825)
+
+- Docent: use LLM to inspect agent traces to detect problems [相关帖子](https://transluce.org/introducing-docent)
+
+
+
+## 8. 如何看待评估？(核心方法论)
+
+不存在放之四海而皆准的评测，取决于你所服务的具体决策目标：
+
+1. **企业选型采购**：在具体场景（如客服系统）下判断模型 A 与模型 B 谁的综合性价比更高。
+
+2. **学术前沿研究**：衡量模型最本质的原始认知能力与智能边界（如纯逻辑推理）。
+
+3. **政策与合规治理**：系统掌握模型潜在的社会效益与安全隐患。
+
+4. **模型算法迭代**：开发者需要高信噪比的梯度反馈，以指导下一步架构与数据优化。
+
+
+
+### 我们究竟在评估什么？
+
+- **传统时代**：评估的是**算法方法 (Methods)**（在完全相同的训练集上公平对比算法创新）。
+
+- **大模型时代**：主要评估的是**最终交付的模型/系统 (Models/Systems)**（厂商可以使用任何算力和私有数据）。
+
+回归方法评估的经典范例：
+
+- **nanoGPT Speedrun**：在固定数据集和计算预算下，比拼谁能以最短时间达到指定的验证损失，极大地激励了基础优化算法的创新！
+
+<img src="images/karpathy-nanogpt-speedrun.png" width="600" /> [相关帖子](https://x.com/karpathy/status/1846790537262571739)
+
+- 评估**方法**激励学术界追求极致的算法与算子创新；
+
+- 评估**模型系统**为下游产业落地提供了直观的选型参照。
+
+> **无论如何，我们必须在评测之初清晰定义好这场游戏的核心规则！**
+
+
+
+## 本讲核心总结 (Takeaways)
+
+- **不存在万能的单一评估基准**：必须根据你试图衡量的具体能力（知识、推理、对话、安全性等）量身定制评估方案。
+
+- **明确评估的游戏规则**：严格区分是评估基础算法方法 (Methods)、独立模型系统 (Models/Systems) 还是复合智能体 (Agents)。
+
+- **三大核心考量维度**：任务难度 (Difficulty)、生态真实性 (Realism) 与评估有效性 (Validity)。
+
+

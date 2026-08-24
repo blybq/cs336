@@ -1,724 +1,824 @@
-# 第 14 课：数据 II (Lecture 14: Data II)
-
-上节课回顾：
-- 在线服务（如 GitHub） → 转储/爬取（如 GitHub Archive） → 已处理数据（如 The Stack）
-- 考量要素：服务条款、版权（许可协议或合理使用）
-
-本节课内容：
-- 数据流水线：转换 (transformation)、过滤 (filtering)、去重 (deduplication)、混合 (mixing)
-- 中期训练 (Mid-training) + 监督微调 (SFT)：合成数据 (synthetic data)
-
 ```python
 from dataclasses import dataclass
 import numpy as np
 import itertools
 import mmh3
-from edtrace.file_util import download_file
-from edtrace import text, image, link
-from lecture_13 import the_pile
-from lecture_util import article_link, post_link
-from references import dolma_2024, the_pile_2020, dclm_2024
+
 ```
 
-```python
-def transformation():
-    text("Raw data does not come as text.")
-    text("It is HTML, PDF (arxiv), or directories (code repositories).")
-
-    text("HTML to text (main one):")
-    text("- Remove boilerplate (e.g., navigation, ads) and extract content")
-    text("- What about images, tables, etc.?")
-    text("- Inherently lossy (need to linearize)")
-    text("- Tools (rule-based): trafilatura, resiliparse, jusText, lynx, etc.")
-    text("- Accuracy matters: "), link(dclm_2024)
-    image("images/dclm-wet.png", width=300)
-
-    text("FinePDFs "), post_link("https://huggingface.co/spaces/HuggingFaceFW/FinePDFsBlog")
-    image("https://huggingfacefw-finepdfsblog.hf.space/_astro/pdf-description.Cb49jXc6_Z17eX4E.webp", width=600)
-    text("- Source: Common Crawl")
-    text("- Recrawl truncated PDFs (since they are big)")
-    text("- OCR (RolmOCR) using a VLM or Docling (make these run fast)")
-    text("- Lots of cleanup and filtering")
-    text("- A lot of layout information is missing")
-
-
-def filtering():
-    text("Algorithmic building block:")
-    text("- Given some **target data** T and lots of **raw data** R, find subset T' of R similar to T.")
-    image("images/raw-target-schema.png", width=600)
-
-    text("Applications:")
-    text("- Language identification (English versus rest)")
-    text("- Quality filtering (high quality versus low quality)")
-    text("- Toxicity filtering (non-toxic versus toxic)")
-
-    text("Desiderata for filtering algorithm:")
-    text("- Generalize from the target data (want T and T' to be different)")
-    text("- Extremely fast (have to run it on R, which is huge)")
-
-    text("Survey paper on data selection "), link("https://arxiv.org/abs/2402.16827")
-
-    text("General framework: Given target T and raw R, find subset of R similar to T")
-    text("1. Estimate some model based on R and T and derive a scoring function")
-    text("2. Keep examples in R based on their score")
-
-    text("Types of classifiers:")
-    text("- Generative model of T (KenLM): score(x) = p_T(x)")
-    text("- Simple classifier (fastText): score(x) = p(T | x)")
-    text("To use: keep examples x with score(x) >= threshold (stochastically)")
-
-    text("Model-based filtering?")
-    text("- Some deliberately do not use model-based filtering (C4, Gopher, RefinedWeb, FineWeb, Dolma)")
-    text("- Some use model-based filtering (GPT-3, LLaMA, DCLM) [becoming the norm]")
-
-    text("Language identification:")
-    text("- Goal: find text of a specific language (e.g., English)")
-    text("- fastText language identification "), article_link("https://fasttext.cc/docs/en/language-identification.html")
-    text("- Off-the-shelf classifier")
-    text("- Supports 176 languages")
-    text("- Trained on multilingual sites: Wikipedia, Tatoeba (translation site) and SETimes (Southeast European news)")
-    text("- Dolma keeps pages with p(English) >= 0.5 "), link(dolma_2024)
-
-    text("OpenMathText "), link("https://arxiv.org/pdf/2310.06786")
-    text("- Goal: curate large corpus of mathematical text from CommonCrawl")
-    text("- Use rules to filter (e.g., contains latex commands)")
-    text("- KenLM trained on ProofPile, keep if perplexity < 15000")
-    text("- Trained fastText classifier to predict mathematical writing, threshold is 0.17 if math, 0.8 if no math")
-    text("- Result: produced 14.7B tokens, used to train 1.4B models that do better than models trained on 20x data")
-
-    # GPT-3 模型
-    text("GPT-3 "), link("https://arxiv.org/pdf/2005.14165")  # Appendix A
-    text("- Positives: samples from {Wikipedia, WebText2, Books1, Books2}")
-    text("- Negatives: samples from CommonCrawl")
-    text("Train linear classifier based on word features "), article_link("https://spark.apache.org/docs/latest/ml-features#tokenizer")
-    text("Keep documents stochastically based on score")
-    def keep_document(score: float) -> bool:
-        return np.random.pareto(9) > 1 - score
-
-    text("LLaMA/RedPajama "), link("https://arxiv.org/pdf/2302.13971")
-    text("- Positives: samples from pages **referenced** by Wikipedia")
-    text("- Negatives: samples from CommonCrawl")
-    text("- Keep documents that are classified positive")
-
-    text("phi-1 "), link("https://arxiv.org/pdf/2306.11644")
-    text("- Philosophy: really high quality data (textbooks) to train a small model (1.5B)")
-    text("- Includes synthetic data from GPT 3.5 (later: GPT-4) and filtered data")
-    R = "Python subset of the Stack"   # 原始数据 (Raw data)
-    prompt = "determine its educational value for a student whose goal is to learn basic coding concepts"
-    T = "Use GPT-4 with this prompt to classify 100K subset of R to get positive examples"
-    text("- Train random forest classifier on T using output embedding from pretrained codegen model")
-    text("- Select data from R that is classified positive by the classifier")
-    text("Result on [HumanEval](https://huggingface.co/datasets/openai_humaneval):")
-    text("- Train 1.3B LM on Python subset of The Stack (performance: 12.19% after 96K steps)")
-    text("- Train 1.3B LM on new filtered subset (performance: 17.68% after 36K steps) - better!")
-
-    text("Toxicity filtering in Dolma "), link(dolma_2024)
-    text("- Dataset: Jigsaw Toxic Comments dataset (2018) "), link(title="dataset", url="https://www.kaggle.com/datasets/julian3833/jigsaw-toxic-comment-classification-challenge")
-    text("- Project goal: help people have better discussions online "), article_link("https://www.kaggle.com/competitions/jigsaw-toxic-comment-classification-challenge/discussion/46064")
-    text("- Data: comments on Wikipedia talk page annotated with {toxic, severe_toxic, obscene, threat, insult, identity_hate}")
-
-    text("Scale-dependent effects of filtering:")
-    text("- No single optimal threshold for filtering")
-    text("- If training for longer, want more (lower quality) data")
-    text("- If training for shorter, want less (higher quality) data")
-    image("images/data-filtering-scale.png", width=800)
 
-    text("Summary:")
-    text("- Filtering is critical for building a good model")
-    text("- Recipe: define target data (what good looks like), extrapolate to raw data")
-    
+# 第 14 讲：数据处理与提纯管线 (Data II: Processing Pipeline)
 
-def deduplication():
-    text("Two types of duplicates:")
-    text("- Exact duplicates (mirror sites, GitHub forks) "), link(title="Gutenberg mirrors", url="https://www.gutenberg.org/MIRRORS.ALL")
-    text("- Near duplicates: same text differing by a few tokens")
+> 核心议题：从万亿级原始互联网网页到干净的模型输入，如何设计并实现转换 (Transformation)、质量过滤 (Filtering)、模糊去重 (Deduplication) 与数据混合 (Data Mixing)？
 
-    text("Examples of near duplicates:")
-    text("- Terms of service and licenses "), link(title="MIT license", url="https://opensource.org/license/mit")
-    text("- Formulaic writing (copy/pasted or generated from a template) "), image("https://d3i71xaburhd42.cloudfront.net/4566c0d22ebf3c31180066ab23b6c445aeec78d5/5-Table1-1.png", width=600)
-    text("- Minor formatting differences in copy/pasting")
 
-    text("Product description repeated 61,036 times in C4")
-    text("'“by combining fantastic ideas, interesting arrangements, and follow the current trends in the field of that make you more inspired and give artistic touches. We’d be honored if you can apply some or all of these design in your wedding.  believe me, brilliant ideas would be perfect if it can be applied in real and make the people around you amazed!")
-    link(title="example page", url="https://www.amazon.co.uk/suryagede-100-Graffiti-Gas-Mask/dp/B07CRHT3RG")
-
-    text("Deduplication training data makes language models better "), link("https://arxiv.org/pdf/2107.06499")
-    text("- Train more efficiently (because have fewer tokens)")
-    text("- Avoid memorization (can mitigate copyright, privacy concerns)")
-
-    text("Design space:")
-    text("1. What is an item (sentence, paragraph, document)?")
-    text("2. How to match (exact match, existence of common subitem, fraction of common subitems)?")
-    text("3. What action to take (remove all, remove all but one)?")
 
-    text("Key challenge:")
-    text("- Deduplication is fundamentally about comparing items to other items")
-    text("- Need linear time algorithms to scale")
+### 上讲内容回顾
 
-    hash_functions()
-    exact_deduplication()
-    jaccard_minhash()
-    locality_sensitive_hashing()
+- **数据溯源**：在线服务 $\rightarrow$ 原始抓取归档 $\rightarrow$ 加工清洗后的规整语料库
 
+- **核心考量**：服务条款限制、知识产权保护与合理使用抗辩
 
-def hash_functions():
-    text("- Hash function h maps item to a hash value (integer or string)")
-    text("- Hash value much smaller than item")
-    text("- Hash collision: h(x) = h(y) for x ≠ y")
 
-    text("Tradeoff between efficiency and collision resistance "),  article_link("https://softwareengineering.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed")
-    text("- Cryptographic hash functions (SHA-256): collision resistant, slow (used in bitcoin)")
-    text("- DJB2, MurmurHash, CityHash: not collision resistant, fast (used for hash tables)")
 
-    text("We will use MurmurHash:")
-    h = mmh3.hash("hello")  # @inspect h
+### 本讲核心内容
 
+- **数据核心处理管线**：格式转换 (Transformation)、质量过滤 (Filtering)、模糊去重 (Deduplication)、数据混合 (Data Mixing)
 
-def exact_deduplication():
-    text("**Simple example**")
-    text("1. Item: string")
-    text("2. How to match: exact match")
-    text("3. Action: remove all but one")
+- **中期训练与后训练**：合成数据 (Synthetic Data) 的构建与利用
 
-    # 原始数据项
-    items = ["Hello!", "hello", "hello there", "hello", "hi", "bye"]  # @inspect items
 
-    # 计算哈希 -> 获得对应哈希值的数据项列表
-    hash_items = itertools.groupby(sorted(items, key=mmh3.hash), key=mmh3.hash)
 
-    # 从每个哈希分组中保留一个数据项
-    deduped_items = [next(group) for h, group in hash_items]  # @inspect deduped_items
+## 1. 数据转换与提取 (Transformation)
 
-    text("- Pro: simple, clear semantics, high precision")
-    text("- Con: does not deduplicate near duplicates")
-    text("- This code is written in a MapReduce way, can easily parallelize and scale")
+原始数据并非现成的纯文本：它们以复杂的 **HTML 网页**、**PDF 论文/图书** 或 **Git 代码仓库目录树** 的形式存在。
 
-    text("**C4** "), link("https://arxiv.org/pdf/1910.10683v4")
-    text("1. Item: 3-sentence spans")
-    text("2. How to match: use exact match")
-    text("3. Action: remove all but one")
-    text("Warning: when a 3-sentence span is removed from the middle of a document, the resulting document might not be coherent")
+原始文件通常是 HTML 网页结构、arXiv PDF 论文排版或包含多层级子目录的代码仓库。
 
 
-def jaccard_minhash():
-    text("Let's now look at approximate set membership.")
-    text("First we need a similarity measure.")
 
-    text("### Jaccard similarity")
-    text("Definition: Jaccard(A, B) = |A intersect B| / |A union B|")
-    A = {"1", "2", "3", "4"}
-    B = {"1", "2", "3", "5"}
+### HTML 转纯文本 (核心转换任务)
 
-    def compute_jaccard(A, B):
-        intersection = len(A & B)  # @inspect intersection
-        union = len(A | B)  # @inspect union
-        return intersection / union
-    jaccard = compute_jaccard(A, B)  # @inspect jaccard
+- **主体抽取**：剥离导航栏、页脚版权、广告弹窗与侧边栏无用噪声，精准提取网页正文
 
-    text("Definition: two documents are **near duplicates** if their Jaccard similarity >= threshold")
+- **非纯文本元素**：如何线性化处理复杂多维表格、图片说明与数学公式？
 
-    text("Algorithentric challenge: find near duplicates in linear time")
+- **信息损失**：将树状 DOM 结构压缩为一维线性文本必然伴随着排版信息的丢失
 
-    text("### MinHash")
-    text("MinHash: a random hash function h so that Pr[h(A) = h(B)] = Jaccard(A, B)")
+- **经典解析工具**：`trafilatura`、`resiliparse`、`jusText`、`lynx` 等开源解析库
 
-    text("Normally, you want different items to hash to different hashes")
-    text("...but here, you want collision probability to depend on similarity")
+- **正文提取质量至关重要**：[dclm_2024](https://arxiv.org/abs/2406.11794)
 
-    def minhash(S: set[str], seed: int):
-        return min(mmh3.hash(x, seed) for x in S)
+<img src="images/dclm-wet.png" width="300" />
 
-    text("Characteristic matrix representation:")
-    text("item | A | B", verbatim=True)
-    text("1    | 1 | 1", verbatim=True)
-    text("2    | 1 | 1", verbatim=True)
-    text("3    | 1 | 1", verbatim=True)
-    text("4    | 1 | 0", verbatim=True)
-    text("5    | 0 | 1", verbatim=True)
+FinePDFs [相关帖子](https://huggingface.co/spaces/HuggingFaceFW/FinePDFsBlog)
 
-    text("Random hash function induces a permutation over items")
-    text("Look at which item is first in A and which item is first in B.")
-    text("Each item has the same probability as being first (min)")
-    text("- If 1, 2, 3 is first, then first in A = first in B.")
-    text("- If 4, 5 is first, then first in A ≠ first in B.")
+<img src="https://huggingfacefw-finepdfsblog.hf.space/_astro/pdf-description.Cb49jXc6_Z17eX4E.webp" width="600" />
 
-    # 验证 MinHash 如宣称的那样近似 Jaccard 相似度
-    n = 100  # 生成这么多个随机哈希函数
-    matches = [minhash(A, seed) == minhash(B, seed) for seed in range(n)]  # @stepover
-    estimated_jaccard = len([m for m in matches if m]) / len(matches)  # @inspect estimated_jaccard
-    assert abs(estimated_jaccard - jaccard) < 0.01
+- 数据源：从 Common Crawl 全量网页归档中提取的海量 PDF 文件
 
-    text("Now we can hash our items, but a collision doesn't tell us Jaccard(A, B) > threshold.")
+- 针对因体积过大被默认截断的 PDF 启动二次完整重抓
 
+- 利用轻量化视觉语言模型 (VLM) 或 Docling 算子进行高精度文档 OCR 与公式表格重构
 
-def locality_sensitive_hashing():
-    text("Locality sensitive hashing (LSH) "), link(title="book chapter", url="http://infolab.stanford.edu/~ullman/mmds/ch3n.pdf")
-
-    text("Suppose we hash examples with just one MinHash function")
-    text("P[A and B collide] = Jaccard(A, B)")
-    text("On average, more similar items will collide, but very stochastic...")
-
-    text("Goal: have A and B collide if Jaccard(A, B) > threshold")
-    text("We have to somehow sharpen the probabilities...")
-
-    text("Solution: use n hash functions")
-    text("Break up into b bands of r hash functions each (n = b * r)")
-
-    n = 12      # 哈希函数总数
-    b = 3       # 分段 (bands) 数
-    r = 4       # 每个分段中的哈希函数个数
-    text("Hash functions:")
-    text("h1 h2 h3 h4  |  h5 h6 h7 h8  |  h9 h10 h11 h12", verbatim=True)
-
-    text("Key: A and B collide if for *some* band, *all* its hash functions return same value")
-    text("As we will see, the and-or structure of the bands sharpens the threshold")
-
-    text("Given Jaccard(A, B), what is the probability that A and B collide?")
-
-    def get_prob_collision(sim, b, r):  # @inspect sim @inspect b @inspect r
-        prob_match = sim ** r                        # 某个特定的 band 匹配的概率  @inspect prob_match
-        prob_collision = 1 - (1 - prob_match) ** b   # 至少有一个 band 匹配的概率  @inspect prob_collision
-        return prob_collision
-
-    text("**Example**")
-    prob_collision = get_prob_collision(sim=0.8, b=5, r=10)  # @inspect prob_collision
-    image("https://cdn.sanity.io/images/vr8gru94/production/b470799575b8e77911bacb8500977afef06d6c85-1280x720.png", width=600)
-
-    sims = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.98]
-    probs = {sim: get_prob_collision(sim=sim, b=10, r=10) for sim in sims}  # @inspect probs @stepover
-
-    text("Increasing r sharpens the threshold and moves the curve to the right (harder to match)")
-    probs = {sim: get_prob_collision(sim=sim, b=10, r=20) for sim in sims}  # @inspect probs @stepover
-
-    text("Increasing b moves the curve to the left (easier to match)")
-    probs = {sim: get_prob_collision(sim=sim, b=20, r=20) for sim in sims}  # @inspect probs @stepover
-    image("https://cdn.sanity.io/images/vr8gru94/production/aace49fa240778e8ecf6e85ad08a2de7f5385566-1280x720.png", width=600)
-
-    text("Example setting "), link("https://arxiv.org/pdf/2107.06499"), text(": n = 9000, b = 20, r = 450")
-    b = 20
-    r = 450
-    text("What is the threshold (where the phase transition happens)?")
-    threshold = (1 / b) ** (1 / r)  # @inspect threshold
-
-    text("Probability that a fixed band matches:")
-    prob_match = (1 / b)  # @inspect prob_match
-    text("Probability that A and B collide is a constant (≈ 1-1/e):")
-    prob_collision = 1 - (1 - 1 / b) ** b  #  @inspect prob_collision
-
-
-def billion(x):
-    return x * 10**9
-
-def trillion(x):
-    return x * 10**12
-
-
-def data_mixing():
-    text("Recall that language models are trained on multiple data sources.")
-
-    text("Datasets in Marin: "), link(title="token viewer", url="https://huggingface.co/spaces/marin-community/token-count-viewer")
-    image("images/marin-token-viewer.png", width=800)
-
-    text("The Pile "), link(the_pile_2020)
-    image("https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png", width=600)
-    text("Key question: what distribution over the data sources should we use?")
-
-    text("Example:")
-    sources = {"Wikipedia", "CC", "GitHub"}
-    p = {"Wikipedia": 0.3, "CC": 0.5, "GitHub": 0.2}  # 一种可能的数据混合比例
-
-    text("Baselines:")
-    text("- Vibes: set p(s) manually based on intuition (quite common)")
-    text("- Uniform sampling: sample uniformly (p(s) ∝ 1)")
-    text("- Proportional mixing: sample proportional to the number of tokens in a source (p(s) ∝ num_tokens(s))")
-
-    text("Intuition: should upweight higher quality sources")
-    text("However...")
-    text("1. We want to ensure diversity (e.g., across incomparable sources: literature, code, papers)")
-    text("2. Each source is finite, so if put too much weight on a small source, then need to epoch over it")
-    
-    text("This last point is important and a bit subtle.")
-    text("Example:")
-    source_token_counts = { 
-        "low": trillion(10),  # 10T tokens（丰富） @stepover
-        "high": billion(10),  # 10B tokens（稀缺） @stepover
-    }
-    p = {"low": 0.5, "high": 0.5}  # 天真的数据混合方案
-    train_tokens = trillion(1)  # 训练 1T token @stepover
-    low_num_epochs = (p["low"] * train_tokens) / source_token_counts["low"]  # @inspect low_num_epochs
-    high_num_epochs = (p["high"] * train_tokens) / source_token_counts["high"]  # @inspect high_num_epochs
-    text("50x epochs on high quality data...can lead to overfitting!")
-
-    text("UniMax "), link("https://arxiv.org/abs/2304.09151")
-    text("- Setting: balancing different languages for multilingual models")
-    text("- Previous work: between uniform and proportional mixing (p(s) ∝ num_tokens(s)^α for α in [0, 1])")
-    text("- Idea: sample sources uniformly but with a hard **cap** C on number of epochs for any source")
-    text("- Specifically, p(s) * num_training_tokens ≤ C for all sources s")
-
-    text("Regression-based mixing "), link("https://arxiv.org/abs/2407.01492"), link("https://arxiv.org/pdf/2602.12237")
-    image("images/regmix.png", width=700)
-    text("- Define distribution over mixtures `p` (e.g., Dirichlet) ")
-    text("- Define regression method (e.g., linear, gradient boosted trees)")
-    text("- Define target based on downstream evals (careful not to overfit!)")
-    text("- Discrepancy between small and large scale (tradeoff cost and accuracy)")
-    image("images/data-mixing-methods.png", width=700)
-    text("Hope 1: regression model is accurate at minimizer 🙏")
-    text("Hope 2: optimal data mixtures transfer from small to large scale 🙏")
-
-    text("Hold on. There's at least one scale-dependent effect:")
-    source_token_counts = { 
-        "low": trillion(10),  # 10T tokens（丰富） @stepover
-        "high": billion(10),  # 10B tokens（稀缺） @stepover
-    }
-    text("- If train small models on low token counts:")
-    p = {"low": 0.1, "high": 0.9}  # 给高质量数据分配更多权重
-    text("- But if train large model on this mixture, we will epoch a ton on high quality data and overfit!")
-
-    text("Simulated epoching "), link("https://arxiv.org/pdf/2501.11747")
-    text("- General idea: make small scale look like large scale (general theme of this course)")
-    text("- Instantiation: downsample all sources proportionally")
-    small_run_tokens = billion(10)  # @stepover
-    large_run_tokens = trillion(1)  # @stepover
-    ratio = small_run_tokens / large_run_tokens  # @inspect ratio
-    downsampled_source_token_counts = {s: count * ratio for s, count in source_token_counts.items()}  # @inspect downsampled_source_token_counts
-    text("- In this downsampled mixture, models that epoch too much won't look good.")
-    text("- So the optimum will be more balanced.")
-    p = {"low": 0.7, "high": 0.3}  # More mass on high quality data
-
-    text("Summary:")
-    text("- Problem: how to weight different data sources (e.g., Wikipedia, general, code)")
-    text("- Regression-based mixing: estimate mixture → loss at small scale, optimize (analogous to scaling laws)")
-    text("- Important consideration: epoching and overfitting (solution: cap or simulated)")
-
-
-def post_training_data():
-    text("Recipe:")
-    text("1. Define a set of environments")
-    text("2. Define a set of tasks / prompts")
-    text("3. Collect responses from a strong model (teacher)")
-
-    text("OpenThoughts "), link("https://arxiv.org/abs/2506.04178")
-    text("- 1.2M examples using QwQ-32B as a teacher")
-    text("- Questions come from 27 human and synthetic sources (e.g., StackExchange, NuminaMath, Chemistry)")
-    image("images/openthoughts-sources.png", width=500)
-    text("- Sampling multiple (16) responses per prompt is helpful")
-    text("- Better models aren't necessarily better teachers: QwQ-32B is a better teacher than DeepSeek-R1")
-    text("- Answer filtering wasn't helpful")
-    text("- Smaller high quality sources (e.g., OpenMath-2-Math) is better than large diverse sources")
-    image("images/openthoughts-pipeline.png", width=600)
-
-    text("SWE-smith "), link("https://arxiv.org/abs/2504.21798")
-    image("images/swe-smith.png", width=500)
-    text("- Given a repository, use LM to generate tasks (introduce bugs with LM)")
-    text("- 128 GitHub repositories yields 50K tasks")
-
-    text("SWE-Zero "), link("https://arxiv.org/abs/2604.01496")
-    text("- SWE tasks have heavy dependencies (unlike math or coding contests)")
-    text("- Setting up thousands of Docker images is an infrastructural nightmare")
-    text("- Observation: strong models can solve many tasks without execution feedback")
-    image("images/swezero-noexec.png", width=600)
-    text("Key: strong models have internal \"world model\" of code semantics")
-    text("- SWE-Zero: 300K agent trajectories that don't require repository-specific execution")
-    text("- 150K GitHub PRs")
-    text("- OpenHands scaffold, remove future git commits to prevent \"git hacking\" by agent")
-    image("images/swezero-prompt.png", width=600)
-    text("- Distilled from Qwen3-Coder-480B + filtering (try to execute anyway)")
-    text("- SWE-Hero: 13K agent trajectories that do require execution feedback")
-    image("images/swezero-results.png", width=700)
-
-    text("SWE-rebench "), link("https://arxiv.org/pdf/2505.20411")
-    text("- 21K interactive Python SWE tasks from 3.4K GitHub repositories")
-    text("- 450K PRs from GitHub and GitHub Archive")
-    text("- Used Qwen 2.5-72B-Instruct to install dependencies and assess PR quality")
-    image("images/swe-rebench.png", width=600)
-
-    text("SWE-ZERO-12M-trajectories "), link(title="data", url="https://huggingface.co/datasets/AlienKevin/SWE-ZERO-12M-trajectories")
-    text("- Scale SWE-Zero up to 12M agent trajectories")
-    text("- Used the SWE-rebench-v2 tasks (32K executable tasks + 120K nonexecutable tasks)")
-    text("- Ran mini-coder-1.7b (very small model, 50.4 pass@100), mini-swe-agent scaffold")
-    text("- [Example](https://huggingface.co/datasets/AlienKevin/SWE-ZERO-12M-trajectories/viewer/default/train?row=5&conversation-viewer=0)")
-
-    text("Summary:")
-    text("- Generating prompts: fully-synthetic, semi-synthetic (real environment + synthetic tasks), real (GitHub PRs)")
-    text("- Responses: from capable models (that are also good teachers)")
-    text("- Code environments are painful")
-    text("- Lots of filtering and other details")
-```
-
-## 提取与数据转换 (Transformation)
-
-```python
-transformation()
-```
-
-原始数据并不是以纯文本形式存在的。
-它是 HTML、PDF（arXiv）或目录结构（代码仓库）。
-
-HTML 转换为文本（最主要的任务）：
-- 移除模板、噪点（例如导航栏、广告等）并提取主要内容
-- 如何处理图像、表格等？
-- 转换过程本质上是有损的（需要将结构化内容线性化）
-- 转换工具（基于规则）：trafilatura、resiliparse、jusText、lynx 等。
-- 提取准确率非常关键：[[DCLM 2024 论文]](https://arxiv.org/abs/2406.11794)
-![](images/dclm-wet.png)
-
-FinePDFs [post](https://huggingface.co/spaces/HuggingFaceFW/FinePDFsBlog)
-![](https://huggingfacefw-finepdfsblog.hf.space/_astro/pdf-description.Cb49jXc6_Z17eX4E.webp)
-- 数据来源：Common Crawl
-- 重新爬取截断的 PDF（因为 PDF 文件通常很大）
-- 使用 VLM 或 Docling 进行 OCR（RolmOCR）（并提高它们的运行速度）
-- 大量的清理和过滤工作
-- 丢失了大量的页面版式排版信息
-
-## 数据过滤 (Filtering)
-
-```python
-filtering()
-```
-
-算法构建模块：
-- 给定一些**目标数据** T 和大量的**原始数据** R，寻找 R 的子集 T' 使其与 T 相似。
-![](images/raw-target-schema.png)
-
-应用场景：
-- 语言识别（英语 vs 其他语言）
-- 质量过滤（高质量 vs 低质量）
-- 毒性过滤（无毒 vs 有毒）
-
-过滤算法的考量点：
-- 从目标数据中泛化（希望 T 和 T' 是不同的）
-- 极快地运行（必须在庞大的原始数据 R 上运行）
-
-数据选择综述论文 [https://arxiv.org/abs/2402.16827](https://arxiv.org/abs/2402.16827)
-
-通用框架：给定目标 T 和原始 R，寻找与 T 相似的 R 的子集
-1. 基于 R 和 T 估计出某种模型，并推导出评分函数
-2. 根据得分保留 R 中的样本
-
-分类器类型：
-- T 的生成模型 (KenLM)：score(x) = p_T(x)
-- 简单分类器 (fastText)：score(x) = p(T | x)
-使用方法：以一定的概率保留得分 score(x) >= threshold（阈值）的样本 x
-
-是否使用基于模型的过滤？
-- 一些模型刻意不使用基于模型的过滤（C4, Gopher, RefinedWeb, FineWeb, Dolma）
-- 一些模型使用基于模型的过滤（GPT-3, LLaMA, DCLM） [这正成为行业常态]
-
-语言识别：
-- 目标：寻找特定语言的文本（如英语）
-- fastText 语言识别 [[文档]](https://fasttext.cc/docs/en/language-identification.html)
-- 开箱即用的分类器
-- 支持 176 种语言
-- 在多语言网站上训练：维基百科、Tatoeba（翻译网站）和 SETimes（东南欧新闻）
-- Dolma 保留 p(English) >= 0.5 的页面 [[Dolma 2024]](https://arxiv.org/abs/2402.00159)
-
-OpenMathText [https://arxiv.org/pdf/2310.06786](https://arxiv.org/pdf/2310.06786)
-- 目标：自 CommonCrawl 中筛选出大型数学文本语料库
-- 使用启发式规则进行过滤（例如，包含 LaTeX 命令）
-- 在 ProofPile 上训练 KenLM 模型，保留 perplexity < 15000 的页面
-- 训练 fastText 分类器以预测是否是数学内容，如果是数学文本则阈值设为 0.17，如果不是数学文本则设为 0.8
-- 结果：产出了 14.7B token，用于训练 1.4B 参数的模型，其表现好于在 20 倍数据上训练的模型
-
-GPT-3 [https://arxiv.org/pdf/2005.14165](https://arxiv.org/pdf/2005.14165) (附录 A)
-- 正样本：自 {Wikipedia, WebText2, Books1, Books2} 采样的样本
-- 负样本：自 CommonCrawl 采样的样本
-基于单词特征训练线性分类器 [[Spark ML 特征提取文档]](https://spark.apache.org/docs/latest/ml-features#tokenizer)
-根据得分以一定概率保留文档（随机采样）：
+- 结合后处理过滤掉乱码页、扫描水印与缺失排版的残卷
+
+- 尽最大可能保留双栏排版、分节标题与多级引用结构
+
+
+
+## 2. 质量与内容过滤 (Filtering)
+
+### 核心算法问题定义
+
+> **数学抽象**：给定小规模的高质量**目标数据** $T$（如维基百科、高质量教科书）和海量的**原始数据** $R$（如 Common Crawl），设计算法从 $R$ 中筛选出在分布上最接近 $T$ 的优质子集 $T'$。
+
+<img src="images/raw-target-schema.png" width="600" />
+
+三大核心应用场景：
+
+1. **语言识别 (Language ID)**：筛选特定目标语言（如英语或中文），剔除乱码与小语种噪声
+
+2. **质量过滤 (Quality Filtering)**：区分行文流畅的高质量正文与低劣机器生成垃圾内容
+
+3. **毒性过滤 (Toxicity Filtering)**：识别并剔除色情、仇恨言论、极端暴力等有害信息
+
+过滤算法的核心设计诉求：
+
+- **泛化能力**：既要学到 $T$ 的高质量特征，又要避免仅仅死记硬背 $T$ 的字面内容，允许筛选出新颖多样的数据 $T'$
+
+- **极致吞吐速度**：算法必须具备极高的单核吞吐量，以处理几十甚至上百 TB 的海量原始数据 $R$
+
+数据选择算法综述文献：[https://arxiv.org/abs/2402.16827](https://arxiv.org/abs/2402.16827)
+
+
+
+### 通用过滤框架与打分函数设计
+
+1. 基于目标集 $T$ 与原始集 $R$ 训练统计或轻量机器学习模型，导出打分函数 $\text{score}(x)$
+
+2. 根据得分 $\text{score}(x)$ 设定阈值或采用概率采样保留优质文档
+
+常用的分类器类型：
+
+- **生成式 N-gram 语言模型 (如 KenLM)**：以文本在高质量集 $T$ 上的困惑度作为打分：$\text{score}(x) = p_T(x)$
+
+- **判别式线性分类器 (如 fastText)**：计算文本属于高质量类的后验概率：$\text{score}(x) = p(T \mid x)$
+
+- 使用方式：根据得分硬性截断 $\text{score}(x) \ge \tau$ 或根据打分进行帕累托随机采样。
+
+
+
+### 基于模型的过滤在各大模型中的演进
+
+- **坚持纯规则过滤**（担心模型偏见导致多样性骤降）：C4、Gopher、RefinedWeb、FineWeb、Dolma
+
+- **引入分类模型过滤**（大幅提升预训练效率）：GPT-3、LLaMA、DCLM（*已成为行业主流趋势*）
+
+
+
+### 语言识别实战 (Language Identification)
+
+- 目标：精准识别并提取出特定语言的文本
+
+- fastText language identification [相关文章](https://fasttext.cc/docs/en/language-identification.html)
+
+- 开箱即用的预训练线性轻量模型，单 CPU 核心每秒可处理数十万字
+
+- 原生支持 176 种全球语言的精准判别
+
+- 训练集：基于维基百科、Tatoeba 翻译库以及东南欧新闻网的多语言语料训练
+
+- Dolma 数据集仅保留判别为英语概率 $p(\text{English}) \ge 0.5$ 的网页 [dolma_2024](https://arxiv.org/abs/2402.00159)
+
+### OpenMathText 数学语料库 [https://arxiv.org/pdf/2310.06786](https://arxiv.org/pdf/2310.06786)
+
+- 目标：从 Common Crawl 海量网页中挖掘大规模高质量数学专业语料
+
+- 第一阶段（规则筛选）：初筛包含 LaTeX 语法指令与数学符号的网页
+
+- 第二阶段（KenLM 打分）：在数学证明库 ProofPile 上训练 KenLM，剔除困惑度 $> 15000$ 的异常离群值
+
+- 第三阶段（fastText 精准判别）：训练轻量二分类器，设置自适应阈值保留高数学价值文本
+
+- **显著成果**：产出了 147 亿高质量数学 Token，训练出的 1.4B 模型推理能力超越了在 20 倍普通数据上训练的模型！
+
+### GPT-3 质量过滤机制 [https://arxiv.org/pdf/2005.14165](https://arxiv.org/pdf/2005.14165)
+
+- **正例集 (Positives)**：采样自高质量语料库（维基百科、WebText2、精选图书）
+
+- 负例集：普通 Common Crawl 随机抽样
+
+Train linear classifier based on word features [相关文章](https://spark.apache.org/docs/latest/ml-features#tokenizer)
+
+- 采用帕累托分布 (Pareto Distribution) 依据得分进行**软性随机保留**（避免硬阈值导致长尾知识被一刀切）：
+
+
+
 ```python
 def keep_document(score: float) -> bool:
     return np.random.pareto(9) > 1 - score
+
 ```
 
-LLaMA/RedPajama [https://arxiv.org/pdf/2302.13971](https://arxiv.org/pdf/2302.13971)
-- 正样本：被维基百科**引用**的页面中的样本
-- 负样本：自 CommonCrawl 采样的样本
-- 保留被分类器预测为正样本的页面
 
-phi-1 [https://arxiv.org/pdf/2306.11644](https://arxiv.org/pdf/2306.11644)
-- 哲学：使用极高质量的数据（教科书）来训练一个小模型 (1.5B)
-- 包含来自 GPT 3.5（后续使用 GPT-4）生成的合成数据以及经过清洗过滤的数据
-- R = "Python subset of the Stack"（原始数据）
-- 提示词：“判定其对于一个想学习基础编程概念的学生的教育价值”
-- T = 使用 GPT-4 配合此提示词对 R 的 10 万个样本子集进行分类，从而获得正样本
-- 在 T 上利用预训练代码生成模型的输出嵌入（embedding）训练随机森林分类器
-- 选择 R 中被分类器判定为正样本的数据
-在 [HumanEval](https://huggingface.co/datasets/openai_humaneval) 上的结果：
-- 在 The Stack 的 Python 子集上训练 1.3B 语言模型（训练 96K 步后表现为：12.19%）
-- 在过滤后的全新子集上训练 1.3B 语言模型（训练 36K 步后表现为：17.68%）——效果大为提升！
+### LLaMA / RedPajama 过滤策略 [https://arxiv.org/pdf/2302.13971](https://arxiv.org/pdf/2302.13971)
 
-Dolma 中的毒性内容过滤 [[Dolma 2024]](https://arxiv.org/abs/2402.00159)
-- 数据集：Jigsaw Toxic Comments dataset (2018) [[Jigsaw 比赛数据集]](https://www.kaggle.com/datasets/julian3833/jigsaw-toxic-comment-classification-challenge)
-- 项目目标：帮助人们在网络上进行更好的讨论 [[Jigsaw 赛后讨论]](https://www.kaggle.com/competitions/jigsaw-toxic-comment-classification-challenge/discussion/46064)
-- 数据：维基百科讨论页上的评论，被标注为 {toxic（有毒）, severe_toxic（剧毒）, obscene（淫秽）, threat（威胁）, insult（侮辱）, identity_hate（身份仇恨）}
+- 巧妙构造正例：抓取**被维基百科词条引用作为外部参考来源 (References) 的网页**作为高质量正例集
 
-过滤中与规模相关的效应：
-- 不存在单一的过滤最佳阈值
-- 如果要训练更长时间，需要更多（较低质量）的数据
-- 如果要缩短训练时间，需要更少（较高质量）的数据
-![](images/data-filtering-scale.png)
+- 负例集：普通 Common Crawl 随机抽样
 
-总结：
-- 数据过滤对于训练一个优秀模型而言至关重要
-- 配方：定义目标数据（明确好的数据长什么样），将其规律外推应用到原始海量数据上
+- 保留被分类器判定为正例的优质网页
 
-## 数据去重 (Deduplication)
+### phi-1 教材级数据过滤与合成 [https://arxiv.org/pdf/2306.11644](https://arxiv.org/pdf/2306.11644)
+
+- **核心哲学**：*“教材即一切”*——用极度高质量、结构清晰的代码与教材语料训练精简小模型 (1.5B)
+
+- 语料构成：GPT-3.5/4 生成的合成编程教学用例 + 严格质量过滤的开源代码
+
+
 
 ```python
-deduplication()
+R = "The Stack 中的 Python 代码子集"   # 原始待清洗数据
+prompt = "评估该代码文件对于学习基础编程概念的学生的教学价值"
+T = "使用 GPT-4 配合此提示词对 R 的 10 万个样本进行分类标注以获得高质量正例"
+
 ```
 
-两类重复内容：
-- 精确重复（镜像网站、GitHub 分支仓库） [[古登堡镜像列表]](https://www.gutenberg.org/MIRRORS.ALL)
-- 近似重复：内容相同，但有极少数字符/格式上的差异
 
-近似重复的例子：
-- 服务条款与开源许可证 [[MIT 许可协议]](https://opensource.org/license/mit)
-- 模版化/程式化的写作内容（复制/粘贴，或从模版生成）
-- 复制/粘贴过程中引入的微小格式差异
+- 利用预训练代码模型的嵌入特征，在 GPT-4 标注的高质量子集上训练随机森林分类器
 
-在 C4 中，一段商品描述被重复了 61,036 次：
-“通过结合奇妙的想法、有趣的安排，并紧跟该领域的当前趋势，让您更有灵感，并赋予艺术触觉。我们很荣幸能将这些设计的部分或全部应用到您的婚礼中。相信我，绝妙的创意如果能应用到实际中，并让周围的人感到惊讶，那就太完美了！” [[亚马逊商品页面]](https://www.amazon.co.uk/suryagede-100-Graffiti-Gas-Mask/dp/B07CRHT3RG)
+- 从 ### The Stack (代码预训练语料库) 海量代码中精准筛选出具有高教学价值的代码文件
 
-训练数据去重可以使语言模型表现更佳 [https://arxiv.org/pdf/2107.06499](https://arxiv.org/pdf/2107.06499)
-- 更高效地训练（因为要处理的 token 总数变少）
-- 避免 verbatim 记忆（这有助于缓解版权和隐私安全隐患）
+- **在 HumanEval 代码评测上的惊人效果**：
 
-设计空间：
-1. 去重的基本单元是什么（句子、段落、整篇文档）？
-2. 如何判定匹配（精确匹配、存在公共子单元、公共子单元的比例）？
-3. 采取什么去重动作（删除全部、仅保留一个）？
+- 在未过滤的 ### The Stack (代码预训练语料库) 原始 Python 代码上训练：准确率仅为 12.19%
 
-核心挑战：
-- 去重从根本上说是比对每个数据项与其他所有数据项
-- 为了扩展到海量数据集，我们需要线性时间复杂度的算法
+- 在精心过滤的高质量子集上训练：仅用 36K 步准确率即大幅跃升至 **17.68%**！
 
-去重相关技术（在接下来的代码单元中展现）：哈希函数、精确去重、Jaccard 相似度与 MinHash，以及局部敏感哈希 (LSH)。
+### Dolma 毒性与有害内容过滤 [dolma_2024](https://arxiv.org/abs/2402.00159)
 
-## 局部敏感哈希与去重算法 (LSH & MinHash)
+- 训练数据集：Jigsaw 恶意评论数据集 (2018) [Kaggle 竞赛数据](https://www.kaggle.com/datasets/julian3833/jigsaw-toxic-comment-classification-challenge)
+
+- Project goal: help people have better discussions online [相关文章](https://www.kaggle.com/competitions/jigsaw-toxic-comment-classification-challenge/discussion/46064)
+
+- 标注标签：维基百科讨论页上的 {toxic, severe_toxic, obscene, threat, insult, identity_hate}
+
+
+
+### 过滤强度的规模依赖效应 (Scale-Dependent Filtering)
+
+- **不存在全局唯一的最优过滤阈值**：最优阈值高度取决于总计算预算 (FLOPs) 与训练步长
+
+- **大计算量长周期训练**：需要更海量的数据储备，因此需适度放宽阈值，容忍稍低质量的数据以避免过拟合；
+
+- **小计算量短周期训练**：对数据纯度要求极高，应采用严苛阈值，确保模型在有限步内学到最密集的知识。
+
+<img src="images/data-filtering-scale.png" width="800" />
+
+
+
+### 过滤阶段小结
+
+- 数据过滤是决定预训练模型质量的分水岭；
+
+- 标准范式：严谨定义高质量目标集 $T$（界定好数据的特征），利用统计与轻量模型外推并清洗原始海量语料 $R$。
+
+
+
+## 3. 数据去重 (Deduplication)
+
+互联网上存在两类极为普遍的重复内容：
+
+1. **完全精确重复**（镜像站点、GitHub Fork 仓库）[古腾堡镜像列表](https://www.gutenberg.org/MIRRORS.ALL)
+
+- 模糊近似重复：绝大部分内容相同、仅有少数词汇或格式差异
+
+近似重复的经典现实案例：
+
+- 各大网站大同小异的《服务条款》与开源协议声明（如 [MIT 许可证](https://opensource.org/license/mit)）
+
+- 模板化套话文本（复制粘贴或由机器模板生成）<img src="https://d3i71xaburhd42.cloudfront.net/4566c0d22ebf3c31180066ab23b6c445aeec78d5/5-Table1-1.png" width="600" />
+
+- 拷贝粘贴时产生的微小空格与排版差异
+
+例如在 C4 数据集中被完全重复了 **61,036 次** 的商品模板描述：
+
+> *“by combining fantastic ideas, interesting arrangements, and follow the current trends in the field of that make you more inspired and give artistic touches. We’d be honored if you can apply some or all of these design in your wedding...”*
+
+[example page](https://www.amazon.co.uk/suryagede-100-Graffiti-Gas-Mask/dp/B07CRHT3RG)
+
+### 为什么对训练数据去重能显著提升语言模型表现？ [https://arxiv.org/pdf/2107.06499](https://arxiv.org/pdf/2107.06499)
+
+1. **大幅提升训练效率**：剔除无意义的重复 Token，使相同计算预算下模型能学到更多全新知识。
+
+2. **显著降低机械记忆风险**：高频重复是导致模型“死记硬背”并泄露训练集隐私/版权原文的元凶，去重可极大缓解该问题。
+
+去重算法的三大设计要素：
+
+1. **切分粒度 (Item)**：按句子 (Sentence)、按段落 (Paragraph) 还是按整篇文档 (Document) 进行对比？
+
+2. **匹配标准 (Matching)**：精确字符匹配、包含相同子串、还是基于 Jaccard 相似度的模糊重合度？
+
+3. **处理动作 (Action)**：仅保留一份唯一副本，还是将所有含重复的污染文档全部剔除？
+
+> **去重算法的核心工程挑战**：
+>
+> 两两比较 $N$ 个文档的朴素算法复杂度为 $O(N^2)$。当 $N$ 达到百亿量级时，$O(N^2)$ 在算力上是完全不可行的。**我们必须依赖近线性时间复杂度 $O(N)$ 的高效哈希算法！**
+
+- 去重的本质是文档/片段与全量语料之间的两两相似度比对；
+
+- 必须设计具备近线性时间复杂度 $O(N)$ 的高效算法以支撑海量扩展；
+
+
+
+### 哈希函数基础 (Hash Functions)
+- 哈希函数 $h$ 将变长数据映射为固定长度的哈希值（整数或定长字符串）
+
+- 哈希值体积远小于原数据，便于极速比对与哈希表检索
+
+- **哈希碰撞 (Collision)**：当 $x \neq y$ 时出现 $h(x) = h(y)$
+
+Tradeoff between efficiency and collision resistance [相关文章](https://softwareengineering.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed)
+
+- **密码学哈希 (SHA-256)**：极强抗碰撞，计算相对耗时（广泛用于区块链与安全签名）
+
+- **非密码学极速哈希 (DJB2, MurmurHash3, CityHash)**：不强调密码学抗碰撞，但计算速度极致飞快（广泛用于哈希表与去重）
+
+本实验中我们将使用高性能的 `mmh3` (MurmurHash3)：
+
+
 
 ```python
-# 1. 哈希函数基础
-hash_functions()
-# 2. 精确匹配去重
-exact_deduplication()
-# 3. Jaccard 相似度与 MinHash 模拟
-jaccard_minhash()
-# 4. 局部敏感哈希 (LSH) 原理与分段效应
-locality_sensitive_hashing()
+h = mmh3.hash("hello")
+
 ```
 
-哈希去重技术的关键点：
 
-- 哈希函数 h 将长文本映射到较小的哈希值。我们需要快速且碰撞率低的哈希函数（如 MurmurHash，而非慢速的安全加密哈希如 SHA-256）。
-- 精确去重无法过滤近似重复。在 C4 中，去重采用 3 个句子的滑动窗口精确去重，这有时会导致被截断文档失去连贯性。
-- Jaccard 相似度度量集合重叠度：Jaccard(A, B) = |A ∩ B| / |A ∪ B|。Jaccard 相似度 >= 阈值即可认定为近似重复。
-- **MinHash** 是一种极其巧妙的哈希方式，它使得两个集合发生哈希碰撞的概率刚好等于它们的 Jaccard 相似度：Pr[h(A) = h(B)] = Jaccard(A, B)。
-- **局部敏感哈希 (LSH)** [[书籍章节]](http://infolab.stanford.edu/~ullman/mmds/ch3n.pdf) 通过 AND-OR 构造对概率曲线进行“陡峭化”处理。通过将 n 个哈希函数划分为 b 个 band，每个 band 包含 r 个哈希函数 (n = b * r)，规定 A 和 B 发生碰撞的条件为：*在某个 band 中，其所含的所有 r 个哈希函数值都完全相同*。
-- 此时碰撞的概率为：1 - (1 - s^r)^b，其中 s 为 Jaccard 相似度。该函数呈现 S 型曲线，在特定阈值 (1/b)^(1/r) 处发生相变（即过滤分界点）。
-- 增加 r 会提高匹配门槛，使曲线向右移动；增加 b 会放宽匹配门槛，使曲线向左移动。
+### 精确去重 (Exact Deduplication)
 
-## 数据混合 (Data mixing)
+1. 处理对象：字符串列表
+
+2. 匹配规则：哈希值完全相同的精确匹配
+
+3. 执行动作：去除重复项，仅保留单个唯一副本
+
+
 
 ```python
-data_mixing()
+items = ["Hello!", "hello", "hello there", "hello", "hi", "bye"]
+hash_items = itertools.groupby(sorted(items, key=mmh3.hash), key=mmh3.hash)
+deduped_items = [next(group) for h, group in hash_items]
+
 ```
 
-语言模型往往是在多个混合的数据源上训练的。
 
-Marin 中的数据集分布：[[Token 统计查看器]](https://huggingface.co/spaces/marin-community/token-count-viewer)
-![](images/marin-token-viewer.png)
+- **优势**：逻辑简单直观，语义明确，精确度极高；
 
-The Pile [[论文]](https://arxiv.org/pdf/2101.00027.pdf)
-![](https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png)
-核心问题：我们应当在不同数据源上采用怎样的概率分布进行混合采样？
+- **局限**：完全无法识别哪怕只有一个词或空格差异的近似重复；
 
-基线方案：
-- 凭直觉 (Vibes)：人工设定比例，在行业中很常见
-- 均匀采样 (Uniform sampling)：不同数据源均匀分布 (p(s) ∝ 1)
-- 按比例混合 (Proportional mixing)：采样权重正比于该数据源的 token 数量 (p(s) ∝ num_tokens(s))
+- 此处代码采用 MapReduce 思想编写（先 Map 哈希再 Reduce 分组），极易在大数据集群上水平扩展并行计算。
 
-直觉上，应当对高质量数据源进行上采样（增加权重）。
-然而：
-1. 必须确保多样性（兼顾无法互相替代的内容：文学、代码、学术论文等）
-2. 每一个数据源是有限的。若给一个小规模的高质量数据源分配过大权重，会导致在训练中对其进行过多的轮数迭代 (epochs)，从而产生过拟合 (overfitting)。
+**C4 数据集中的去重实验** [https://arxiv.org/pdf/1910.10683v4](https://arxiv.org/pdf/1910.10683v4)
 
-UniMax [https://arxiv.org/abs/2304.09151]
-- 场景：在多语言模型中平衡不同的语言数据
-- 先前工作：在均匀和按比例混合之间做折中 (p(s) ∝ num_tokens(s)^α，α 取值 0 到 1)
-- 核心想法：均匀采样，但在任意数据源的迭代轮数上设置硬性上限 **cap** C。
-- 具体而言，需满足 p(s) * num_training_tokens ≤ C (对于所有数据源 s)。
+进阶实战：按连续 3 个句子的滑动窗口粒度进行去重
 
-基于回归的混合策略 [https://arxiv.org/abs/2407.01492] | [https://arxiv.org/pdf/2602.12237]
-![](images/regmix.png)
-- 定义关于混合比例 `p` 的分布（例如狄利克雷分布, Dirichlet）
-- 定义回归方法（如线性回归、梯度提升树）
-- 基于下游评估设定目标函数（注意防止测试集泄露和过拟合！）
-- 考量小规模训练与大规模训练之间的差异（权衡训练成本与最终准确率）
-![](images/data-mixing-methods.png)
-- 期望 1：回归模型在极小值点处是准确的
-- 期望 2：最优的混合比例在小规模和大规模之间可以良好地外推/迁移
+匹配标准：子片段哈希值完全匹配
 
-但是，这里存在一个与规模相关的关键效用（如我们在代码中所模拟的）：
-- 在小参数模型上做少 token 的数据混合测试时，小规模高质量数据的高权重（如 90%）看起来效果很好。
-- 但若以此比例训练千亿级大模型（消耗数十万亿 token），会导致对高质量数据的过度迭代与灾难性过拟合。
+3. 执行动作：去除重复项，仅保留单个唯一副本
 
-模拟迭代法 (Simulated epoching) [https://arxiv.org/pdf/2501.11747]
-- 核心想法：使小规模实验在迭代效应上看起来与大规模训练相似
-- 实例化：将所有数据源等比例下采样 (Downsample)，在此下采样的混合测试中，那些过度迭代的数据混合方案在小模型上就会表现不佳，从而使筛选出来的最佳比例大体平衡且可直接迁移到大模型上。
+> ⚠️ **截断隐患**：若直接从文档中间硬性剔除连续 3 句的重复片段，会导致剩余上下文语义断裂，因此现代预训练更推荐文档级丢弃或段落级去重。
 
-## 后期训练与合成数据 (Post-training & Synthetic Data)
+
+
+### 模糊近似集合匹配
+
+### 相似度度量标准
+
+
+
+### Jaccard 相似度 (Jaccard Similarity)
+
+**定义**：集合 $A$ 与 $B$ 的 Jaccard 相似度等于交集大小除以并集大小：
+
+$$J(A, B) = \frac{|A \cap B|}{|A \cup B|}$$
+
+
 
 ```python
-post_training_data()
+A = {"1", "2", "3", "4"}
+B = {"1", "2", "3", "5"}
+def compute_jaccard(A, B):
+    intersection = len(A & B)
+    union = len(A | B)
+    return intersection / union
+jaccard = compute_jaccard(A, B)
+
 ```
 
-通用方案：
-1. 定义一系列运行环境
-2. 定义一系列任务/提示词 (Prompts)
-3. 从性能强大的语言模型（教师模型，Teacher）中收集回复
 
-OpenThoughts [https://arxiv.org/abs/2506.04178]
-- 使用 QwQ-32B 作为教师生成了 120 万个样本
-- 问题源自 27 个真实和合成数据源（例如 StackExchange, NuminaMath, 化学等）
-![](images/openthoughts-sources.png)
-- 针对每个提示词进行多次采样（如 16 次回复）能提供更好的数据质量
-- 能力更强的模型不一定就是更好的“教师模型”：例如，QwQ-32B 生成用于训练的 CoT 轨迹效果好于 DeepSeek-R1
-- 简单的过滤答案机制没有带来显著帮助
-- 小规模、高针对性的高质量源（如 OpenMath-2-Math）效果好于大规模的杂乱多样化数据源
-![](images/openthoughts-pipeline.png)
+> **近似重复定义**：当且仅当两篇文档提取的特征集合 Jaccard 相似度 $J(A, B) \ge \tau$（阈值）时，判定两篇文档为**近似重复 (Near Duplicates)**。
 
-SWE-smith [https://arxiv.org/abs/2504.21798]
-![](images/swe-smith.png)
-- 给定一个代码仓库，利用大模型自动注入 Bug 以生成相关的开发/修复任务
-- 128 个 GitHub 仓库产出了 5 万个任务
+**核心算法挑战**：如何在海量百亿级文档中，以近线性时间复杂度 $O(N)$ 找出所有满足阈值的近似重复对？
 
-SWE-Zero [https://arxiv.org/abs/2604.01496]
-- 软件开发（SWE）任务往往有非常复杂的环境依赖（不同于独立的数学或算法竞赛题）
-- 为成千上万个任务构建对应的 Docker 镜像是极其繁重的工程灾难
-- 关键发现：足够强大的模型可以在不进行代码执行与反馈的情况下，直接解决许多软件工程任务
-![](images/swezero-noexec.png)
-核心：强大的模型在内部建立了关于代码语义的“世界模型”
-- SWE-Zero：产生了 30 万条不需要针对特定仓库运行代码执行反馈的智能体轨迹
-- 来自 15 万个真实的 GitHub PRs
-- 采用 OpenHands 智能体脚手架，并在轨迹中删除了未来的 Git commit 信息以防智能体投机取巧
-![](images/swezero-prompt.png)
-- 从 Qwen3-Coder-480B 蒸馏并做后续过滤
-- SWE-Hero：包含 1.3 万条需要代码执行与反馈的智能体轨迹
-![](images/swezero-results.png)
 
-SWE-rebench [https://arxiv.org/pdf/2505.20411]
-- 包含源自 3400 个 GitHub 仓库的 2.1 万个交互式 Python 软件工程任务
-- 从 GitHub 和 GitHub Archive 中收集了 45 万个 PRs
-- 使用 Qwen 2.5-72B-Instruct 自动配置依赖环境并对 PR 质量进行评估分档
-![](images/swe-rebench.png)
 
-SWE-ZERO-12M-trajectories [[HuggingFace 数据集]](https://huggingface.co/datasets/AlienKevin/SWE-ZERO-12M-trajectories)
-- 将 SWE-Zero 的规模扩大到了 1200 万条智能体运行轨迹
-- 采用了 SWE-rebench-v2 任务（包括 3.2 万个可执行任务 + 12 万个非可执行任务）
-- 运行 mini-coder-1.7b（一个小参数模型）以及 mini-swe-agent 脚手架产出轨迹
-[数据集示例](https://huggingface.co/datasets/AlienKevin/SWE-ZERO-12M-trajectories/viewer/default/train?row=5&conversation-viewer=0)
+### MinHash 最小哈希算法
 
-总结：
-- 提示词生成包含：完全合成、半合成（在真实环境基础上由大模型生成任务）和真实源（GitHub 真实的 PRs）
-- 回复：来自具有强大推理能力且适合作为“教师”的模型
-- 代码执行环境的自动搭建与评测在实践中极其痛苦和复杂
+**MinHash 核心性质**：设计随机哈希函数 $h$，使得两个集合的最小哈希值碰撞的概率严格等于其 Jaccard 相似度：
+
+$$P(\min h(A) = \min h(B)) = J(A, B)$$
+
+通常在传统哈希表中，我们期望不同元素尽量映射到不同的哈希值以避免碰撞；
+
+……但在相似度哈希中，我们**恰恰希望碰撞概率严格正比于它们的集合相似度**！
+
+
+
+```python
+def minhash(S: set[str], seed: int):
+    return min(mmh3.hash(x, seed) for x in S)
+
+```
+
+
+### 特征矩阵表示 (Characteristic Matrix)
+
+元素 | 集合 A | 集合 B
+
+1    | 1      | 1
+
+2    | 1      | 1
+
+3    | 1      | 1
+
+4    | 1      | 0
+
+5    | 0      | 1
+
+随机哈希函数 $h$ 本质上对所有元素的全集施加了一次随机置换 (Permutation)。
+
+观察置换后集合 $A$ 中出现的首个元素与集合 $B$ 中出现的首个元素：
+
+并集 $A \cup B$ 中的每一个元素作为首个最小元素的概率完全均等：
+
+- 如果首个出现的元素属于交集 {1, 2, 3}，则 $A$ 的首个元素与 $B$ 的首个元素完全一致（发生碰撞）；
+
+- 如果首个出现的元素属于差集 {4, 5}，则 $A$ 与 $B$ 的首个元素不一致。
+
+
+
+```python
+n = 100  # Generate this many random hash functions
+matches = [minhash(A, seed) == minhash(B, seed) for seed in range(n)]
+estimated_jaccard = len([m for m in matches if m]) / len(matches)
+assert abs(estimated_jaccard - jaccard) < 0.01
+
+```
+
+
+有了 MinHash 签名后，单个哈希碰撞只是一个二元随机事件，单次无法直接判断 $J(A, B) > \tau$。
+
+
+
+### 局部敏感哈希 (Locality Sensitive Hashing, LSH)[book chapter](http://infolab.stanford.edu/~ullman/mmds/ch3n.pdf)
+
+如果仅使用单个 MinHash 函数对文档打哈希：
+
+碰撞概率 $P[A \text{ 与 } B \text{ 碰撞}] = J(A, B)$
+
+虽然平均而言相似度越高的文档越容易碰撞，但随机方差极大（单次掷骰子）；
+
+我们的目标：当 $J(A, B) > \tau$ 时极大概率碰撞，而当 $J(A, B) < \tau$ 时极大概率不碰撞！
+
+我们需要将平缓的线性概率曲线“锐化”成一条陡峭的阶跃 S 型曲线！
+
+**解决方案**：采用 $n$ 个独立的 MinHash 函数构建签名向量；
+
+将签名向量划分为 **$b$ 个带 (Bands)**，每个分带包含 **$r$ 行 (Rows)**，满足 $n = b \times r$。
+
+
+
+```python
+n = 12      # Number of hash functions
+b = 3       # Number of bands
+r = 4       # Number of hash functions per band
+
+```
+
+
+哈希函数分带示意：
+
+第 1 带 (h1~h4)  |  第 2 带 (h5~h8)  |  第 3 带 (h9~h12)
+
+**判定准则 (AND-OR 逻辑)**：只要两篇文档在**某一个分带内全部 $r$ 个哈希值完全相等 (AND)**，就判定它们在全局发生碰撞并捕获为候选重复对 (OR)！
+
+正是这种“带内全与 (AND)、带间取或 (OR)”的组合结构，构筑了陡峭的相似度筛选阈值！
+
+设两文档的真实 Jaccard 相似度为 $s = J(A, B)$，则全局碰撞概率推导如下：
+
+
+
+```python
+def get_prob_collision(sim, b, r):
+    prob_match = sim ** r                        # Probability that a fixed band matches
+    prob_collision = 1 - (1 - prob_match) ** b   # Probability that some band matches
+    return prob_collision
+
+```
+
+
+**Example**
+
+
+
+```python
+prob_collision = get_prob_collision(sim=0.8, b=5, r=10)
+
+```
+
+
+<img src="https://cdn.sanity.io/images/vr8gru94/production/b470799575b8e77911bacb8500977afef06d6c85-1280x720.png" width="600" />
+
+
+
+```python
+sims = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.98]
+probs = {sim: get_prob_collision(sim=sim, b=10, r=10) for sim in sims}
+
+```
+
+
+- **增大 $r$（每个带行数）**：使带内匹配条件更苛刻，S 型曲线向右移动（提高相似度门槛，减少误报）；
+
+
+
+```python
+probs = {sim: get_prob_collision(sim=sim, b=10, r=20) for sim in sims}
+
+```
+
+
+- **增大 $b$（分带数量）**：增加匹配机会，S 型曲线向左移动（降低门槛，提高召回率）；
+
+
+
+```python
+probs = {sim: get_prob_collision(sim=sim, b=20, r=20) for sim in sims}
+
+```
+
+
+<img src="https://cdn.sanity.io/images/vr8gru94/production/aace49fa240778e8ecf6e85ad08a2de7f5385566-1280x720.png" width="600" />
+
+工业界典型参数配置：[https://arxiv.org/pdf/2107.06499](https://arxiv.org/pdf/2107.06499): n = 9000, b = 20, r = 450
+
+
+
+```python
+b = 20
+r = 450
+
+```
+
+
+发生相变的临界相似度阈值（S 曲线拐点）：
+
+
+
+```python
+threshold = (1 / b) ** (1 / r)
+
+```
+
+
+临界阈值下单个分带匹配概率：
+
+
+
+```python
+prob_match = (1 / b)
+
+```
+
+
+当相似度处于临界阈值 $s = (1/b)^{1/r}$ 时，碰撞概率趋近于常数 $1 - 1/e \approx 0.632$：
+
+
+
+```python
+prob_collision = 1 - (1 - 1 / b) ** b
+
+```
+
+
+```python
+def billion(x):
+    return x * 10**9
+def trillion(x):
+    return x * 10**12
+
+```
+
+
+语言模型通常需要在多个异构数据源构成的混合语料上进行预训练：
+
+Datasets in Marin:[token viewer](https://huggingface.co/spaces/marin-community/token-count-viewer)
+
+<img src="images/marin-token-viewer.png" width="800" />
+
+The Pile[the_pile_2020 (EleutherAI)](https://arxiv.org/pdf/2101.00027.pdf)
+
+<img src="https://stanford-cs324.github.io/winter2022/lectures/images/the-pile.png" width="600" />
+
+**核心决策问题**：在多个数据源之间，我们应该如何科学设定各自的采样分布概率？
+
+示例数据源与候选混合配比：
+
+
+
+```python
+sources = {"Wikipedia", "CC", "GitHub"}
+p = {"Wikipedia": 0.3, "CC": 0.5, "GitHub": 0.2}  # One possible data mixture
+
+```
+
+
+### 常见的基础配比策略 (Baselines)
+
+1. **直觉调配 (Vibes)**：工程师凭经验和主观感觉手动微调权重（在行业早期极为普遍）；
+
+2. **均匀采样 (Uniform)**：所有数据源享有完全平等的采样概率；
+
+3. **等比例混合 (Proportional)**：按各数据源的实际 Token 总量成比例混合；
+
+直觉规律：应当给予高质量数据源（维基百科、教材、高质量代码）更高的采样权重。
+
+然而，加权必须注意以下两个关键制约因素：
+
+1. **领域多样性**：必须确保模型在文学、代码、学术论文等互不替代的领域保持知识平衡；
+
+2. **数据量有限与重复轮数**：高质数据源总量有限，加权过大会迫使模型对该数据源遍历多个 Epochs。
+
+第二个考量至关重要且极富技巧性：
+
+示例数据源与候选混合配比：
+
+
+
+```python
+source_token_counts = {
+    "low": trillion(10),  # 10T tokens (abundant)
+    "high": billion(10),  # 10B tokens (scarce)
+}
+p = {"low": 0.5, "high": 0.5}  # Naive data mixture
+train_tokens = trillion(1)  # Train for 1T tokens
+low_num_epochs = (p["low"] * train_tokens) / source_token_counts["low"]
+high_num_epochs = (p["high"] * train_tokens) / source_token_counts["high"]
+
+```
+
+
+> ⚠️ **过拟合警示**：在小规模高质量数据上重复训练超过 50 个 Epochs 会导致模型死记硬背并严重损害泛化能力！
+
+### UniMax 数据均衡算法 (Google, 2023)[https://arxiv.org/abs/2304.09151](https://arxiv.org/abs/2304.09151)
+
+- **应用场景**：在多语言大模型训练中平衡英语与低资源长尾语种的数据配比；
+
+- **以往方法**：在均匀采样与等比例采样之间取温度系数插值（$p(s) \propto N(s)^\alpha$）；
+
+- **UniMax 核心思想**：尽量均匀采样各语种，但对任意数据源设定严格的**最大重复轮数上限 (Epoch Cap $C$)**；
+
+- **数学约束**：对于所有数据源 $s$，要求 $p(s) \times N_{\text{train}} \le C \times N(s)$。
+
+### 基于回归模型的数据配比优化 (RegMix, 2024-2026)[https://arxiv.org/abs/2407.01492](https://arxiv.org/abs/2407.01492)[https://arxiv.org/pdf/2602.12237](https://arxiv.org/pdf/2602.12237)
+
+<img src="images/regmix.png" width="700" />
+
+1. 在配比概率向量 $p$ 上定义先验分布（如狄利克雷分布 Dirichlet）；
+
+2. 选用回归预测算法（如线性回归、梯度提升决策树 GBDT）；
+
+3. 以数十组小算力模型在验证集上的下游损失作为回归拟合目标；
+
+4. **核心权衡**：小规模算力实验的低成本 vs 跨尺度外推至万卡集群的预测准确度。
+
+<img src="images/data-mixing-methods.png" width="700" />
+
+- **假设 1**：回归拟合模型在最优极值点附近具有足够的预测精度；
+
+- **假设 2**：在小模型上搜索出的最优数据配比能够平滑迁移至全尺寸超大模型。
+
+然而，这里存在一个必须警惕的**规模依赖陷阱**：
+
+
+
+```python
+source_token_counts = {
+    "low": trillion(10),  # 10T tokens (abundant)
+    "high": billion(10),  # 10B tokens (scarce)
+}
+
+```
+
+
+- 如果在小算力上仅训练极短步长（如 10B Token），高质量小语料只会被遍历极少轮次；
+
+
+
+```python
+p = {"low": 0.1, "high": 0.9}  # More mass on high quality data
+
+```
+
+
+- 但如果直接将此配比迁移到 10T Token 的超大模型上，高质量数据会被重复数十上百轮而导致严重过拟合！
+
+### 模拟轮次缩放算法 (Simulated Epoching, 2025)[https://arxiv.org/pdf/2501.11747](https://arxiv.org/pdf/2501.11747)
+
+- **核心思想**：让小规模算力实验在 Epoch 轮次分布上精确拟合大规模预训练时的状态；
+
+- **具体实现**：将各数据源按相同比例进行降采样，使小模型在小 Token 预算下也能经历与全尺寸大模型相同的重复轮数；
+
+
+
+```python
+small_run_tokens = billion(10)
+large_run_tokens = trillion(1)
+ratio = small_run_tokens / large_run_tokens
+downsampled_source_token_counts = {s: count * ratio for s, count in source_token_counts.items()}
+
+```
+
+
+- 在降采样后的混合语料中，重复轮次过高的数据源会提前暴露过拟合缺陷，从而使回归模型能够精准抑制过度重复；
+
+- 最终求解出的配比权重更加均衡健壮！
+
+
+
+```python
+p = {"low": 0.7, "high": 0.3}  # More mass on high quality data
+
+```
+
+
+### 过滤阶段小结
+
+- **核心问题**：如何科学设定维基百科、通用网页、代码等异构数据源的权重？
+
+- ### 基于回归模型的数据配比优化 (RegMix, 2024-2026): estimate mixture → loss at small scale, optimize (analogous to scaling laws)
+
+- **关键考量**：防范高质数据的过度重复与过拟合（解决方案：UniMax 轮数硬截断或 Simulated Epoching 降采样模拟）。
+
+
+
+### 强化学习与推理合成数据标准构建流程
+
+1. **构建多样化交互环境**（代码执行终端、数学推导沙盒、网页环境）
+
+2. **定义高质量任务与提示词集合**（涵盖广泛的难度与领域分布）
+
+3. **利用强能力教师模型生成长链条解答轨迹**（并借助执行器进行真值校验）
+
+### OpenThoughts (前沿开源思维链合成语料, 2025)[https://arxiv.org/abs/2506.04178](https://arxiv.org/abs/2506.04178)
+
+- 采用 QwQ-32B 作为教师模型，提炼生成 120 万条高质量复杂推理思维链 (CoT) 轨迹；
+
+- 题库来自 27 个高质量人类与合成数据源（包括 StackExchange、NuminaMath 数学题库、化学与物理竞赛题）；
+
+<img src="images/openthoughts-sources.png" width="500" />
+
+- **多样性采样**：对每个提示词采样 16 条候选解答能大幅提升探索广度与优质解答覆盖率；
+
+- **重要发现**：更庞大的模型不一定是更好的蒸馏教师（QwQ-32B 的思维链表述更适合中小模型学习）；
+
+- 实验观察：直接对最终答案进行过滤并未带来明显性能增益。
+
+- 精炼的高质量数学语料（如 OpenMath-2-Math）在提升模型推理上的效果显著优于庞大但含噪的多样化语料；
+
+<img src="images/openthoughts-pipeline.png" width="600" />
+
+### SWE-smith (自动化软件工程任务合成, 2025)[https://arxiv.org/abs/2504.21798](https://arxiv.org/abs/2504.21798)
+
+<img src="images/swe-smith.png" width="500" />
+
+- 核心机制：给定开源代码库，让大模型自动化在代码中注入精妙 Bug，并合成对应的 Issue 描述与单元测试；
+
+- 在 128 个 GitHub 仓库上自动化产出了 5 万个高质量且可判分的真实软件修复任务；
+
+### SWE-Zero (无沙盒免执行长轨迹蒸馏, 2026)[https://arxiv.org/abs/2604.01496](https://arxiv.org/abs/2604.01496)
+
+- 现实痛点：软件工程任务依赖极其复杂的编译与依赖环境（与纯文本数学题截然不同）；
+
+- 为成千上万个历史仓库搭建独立的 Docker 运行沙盒是巨大的基础设施与算力开销；
+
+- **关键洞察**：顶尖大模型在预训练中已经内化了深刻的代码语义“世界模型”，许多修复无需反复运行即可一次性精准定位；
+
+<img src="images/swezero-noexec.png" width="600" />
+
+核心：顶尖大模型具备对代码执行语义的内在精确建模能力；
+
+- ### SWE-Zero (无沙盒免执行长轨迹蒸馏, 2026): 300K agent trajectories that don't require repository-specific execution
+
+- 覆盖 15 万个真实的 GitHub Pull Request；
+
+- 基于 OpenHands 脚手架，严格剔除未来的 Git 提交以彻底防止 Agent 窥探答案作弊；
+
+<img src="images/swezero-prompt.png" width="600" />
+
+- 从 Qwen3-Coder-480B 强模型中蒸馏并进行严格一致性过滤；
+
+- **SWE-Hero**：精选 1.3 万条高度依赖终端交互与执行反馈的高价值复杂长轨迹；
+
+<img src="images/swezero-results.png" width="700" />
+
+### SWE-rebench (交互式长程软件工程基准, 2025)[https://arxiv.org/pdf/2505.20411](https://arxiv.org/pdf/2505.20411)
+
+- 汇集来自 3400 个 GitHub 仓库的 2.1 万个交互式 Python 真实工程任务；
+
+- 审计了 GitHub Archive 归档中的 45 万个历史 PR；
+
+- 利用前沿代码大模型自动化配置依赖并严密评估 PR 代码补丁的修复质量；
+
+<img src="images/swe-rebench.png" width="600" />
+
+### SWE-ZERO-12M (千万级超大规模智能体轨迹数据集)[data](https://huggingface.co/datasets/AlienKevin/### SWE-ZERO-12M (千万级超大规模智能体轨迹数据集))
+
+- Scale ### SWE-Zero (无沙盒免执行长轨迹蒸馏, 2026) up to 12M agent trajectories
+
+- Used the ### SWE-rebench (交互式长程软件工程基准, 2025)-v2 tasks (32K executable tasks + 120K nonexecutable tasks)
+
+- 实验证明：仅使用 1.7B 超小模型配合 mini-swe-agent 脚手架，在此轨迹上训练后即可取得惊人的 50.4 pass@100 得分！
+
+- [Example](https://huggingface.co/datasets/AlienKevin/### SWE-ZERO-12M (千万级超大规模智能体轨迹数据集)/viewer/default/train?row=5&conversation-viewer=0)
+
+
+
+### 过滤阶段小结
+
+- - **提示词构建的三种流派**：纯合成 (Fully-Synthetic)、半合成 (Semi-Synthetic，真实代码库 + 合成任务) 与纯真实 (Real GitHub PRs)；
+
+- - **高质量回复来源**：来自具备强推理能力且适合作为教学蒸馏范例的顶尖教师模型；
+
+- - **工程实操痛点**：真实代码执行环境的依赖配置极其繁琐沉重；
+
+- - **成败关键**：需要辅以极度严密的结果真值校验、轨迹去噪与格式清洗。
+
+
+
+### 过滤阶段小结
+
+- **过滤策略**：训练轻量级分类器（语言判别、质量评分、毒性检测）来界定“什么是好数据”
+
+- **高效去重**：利用哈希算法（MinHash + LSH）在大规模语料上实现近线性复杂度的模糊近似去重
+
+- **数据配比**：在小算力规模上验证数据混合配方，外推预测并指导全尺寸大模型预训练
+
+- **核心实战**：语言识别、领域分类、毒性过滤与代码清洗
+
+- **后训练对齐**：构建高密度的合成指令与偏好数据
+
+- **工程本质**：数据工程高度依赖对具体领域样本的深入观察、人工抽检与细致迭代。
+
+
