@@ -1,562 +1,219 @@
-# 第 17 课：多模态模型 (Lecture 17: multimodal models)
-
-到目前为止我们涵盖的是：语言模型
-> text ⇒ text (文本 ⇒ 文本)
-
-但真实世界是多模态的：
-![](images/multimodality.png)
-
-终极目标：**全能模型 (omni model)**
-- 输入任何模态的组合（理解）
-- 输出任何模态的组合（生成）
-
-我们今天所处的位置：
-- Transformer 表现极好，因此我们必须使用它们。
-- Transformer 以 token 作为“语言”（离散或连续），其中一个 token 代表某些语义信息单元。
-- 因此，我们必须将一切内容转换为 token。
-- 注意：我们必须对文本也进行这一处理（回忆一下 tokenization 课程）。
-- 对于非文本模态，这更具挑战性……
-
-核心问题：
-1. 我们如何输入非文本数据（例如，理解图像）？
-2. 我们如何输出非文本数据（例如，生成音频）？
-
-```python
-from edtrace import text, image, link
-from lecture_util import article_link, post_link
-```
-
-```python
-def clip():
-    text("CLIP (Contrastive Language-Image Pretraining) "), link("https://arxiv.org/abs/2103.00020")
-
-    text("Context:")
-    text("- Computer vision models were trained on annotated images.")
-    text("- Question: is it possible to leverage the much larger amount of (image, caption) pairs?")
-    image("images/clip.png", width=800)
-
-    text("Method:")
-    text("- Get a batch of (image, text) examples (e.g., 32768)")
-    text("- Encode each image and each text")
-    text("- For each image, prefer its aligned text over other texts")
-    text("- For each text, prefer its aligned image over other images")
-    image("images/clip-code.png", width=400)
-
-    text("Data:")
-    text("- Searched for 500K queries, get ~20K (image, text) pairs per query")
-    text("- Trained on 400M image-text pairs")
-    text("- Didn't release the dataset")
-    text("- Reproduced in OpenCLIP (using LAION-5B dataset, which used CLIP for filtering) "), link("https://arxiv.org/abs/2212.07143")
-
-    text("Data processing "), link(title="code", url="https://github.com/openai/CLIP/blob/main/clip/clip.py#L79")
-    text("- Images come in all resolutions (arbitrary W x H)")
-    text("- Resize using bicubic interpolation so shorter side is 336 pixels")
-    text("- Center crop (cuts off borders to get 336 x 336)")
-    
-    text("Vision encoder:")
-    text("- Experimented with ResNet-50 and Vision Transformers "), link("https://arxiv.org/pdf/2010.11929")
-    image("images/vit.png", width=600)
-    text("- Attention pooling: do QKV with query = global average of activations")
-    text("- Best model: ViT-L/14@336px (L = large, 14x14 patches, 3 channels, trained on 336x336 resolution images)")
-
-    text("Text encoder:")
-    text("- GPT-2 Transformer (63M parameters, 12 layers)")
-    text("- Encode [BOS] ... [EOS], return [EOS] activation at highest layer")
-
-    text("Headline result:")
-    text("- On ImageNet, zero-shot CLIP outperformed ResNet-50 trained on 1.2M ImageNet images")
-
-    text("Ablation:")
-    text("- Alternative: predict text from images directly")
-    text("- Much less compute efficient compared to CLIP-style ranking")
-    image("images/clip-efficiency.png", width=400)
-
-    text("Summary:")
-    text("- Encoding of images captures semantics given by (noisy) text")
-    text("- Design decisions chosen based on image classification (not very fine-grained)")
-    text("- Technical: requires large batch sizes, softmax operation over full batch")
-
-
-def siglip():
-    text("SigLIP (Sigmoid Loss for Language Image Pre-Training) "), link("https://arxiv.org/abs/2303.15343")
-
-    text("Objective:")
-    text("- CLIP: multiclass classification for (text, image) versus (text, image') for all image'")
-    text("- SigLIP: binary classification for (text, image) - aligned or not?")
-    image("images/siglip-code.png", width=500)
-
-    text("Data:")
-    text("- WebLI dataset: O(billion) (image, text) pairs "), link("https://arxiv.org/pdf/2209.06794")
-    text("- Scraped from the Internet")
-    text("- Used automatic OCR to extract text from images")
-    text("- Keep 10% highest quality")
-    text("- Supports 100 languages")
-
-    text("Efficiency:")
-    text("- CLIP: 10 days on 256 TPUv3")
-    text("- SigLIP: 5 days on 32 TPUv4 (lower FLOP/s than TPUv3) - much faster!")
-    image("images/siglip-parallelism.png", width=800)
-
-    text("Batch size:")
-    text("- Decouple batch size from loss")
-    text("- Better than CLIP for <16K batch sizes")
-    text("- Go up to 1M batch size, but 32K is enough")
-
-
-def llava():
-    text("LLaVA (Large Language and Vision Assistant) "), link("https://arxiv.org/abs/2304.08485")
-
-    text("Vision encoder: CLIP")
-    text("Text decoder: Vicuna (LLaMA fine-tuned on ShareGPT conversations) "), post_link("https://www.lmsys.org/blog/2023-03-30-vicuna/")
-
-    text("Data:")
-    text("- MS COCO has images annotated with bounding boxes and Mechanical Turk captions")
-    text("- Prompt GPT-4 with captions or detected objects and generate questions or conversations")
-    text("- Pair generations with original images")
-    text("- 158K examples")
-    image("images/llava-gen.png", width=600)
-
-    text("Model:")
-    text("- Encode images with CLIP (ViT-L/14)")
-    text("- Linear projection (W) into embedding space (Flamingo and Q-former are more complex)")
-    image("images/llava-architecture.png", width=600)
-
-    text("Training:")
-    text("- Stage 1 (alignment): freeze vision encoder and language model, only train W")
-    text("- Stage 2 (fine-tuning): freeze vision encoder and train W and language model")
-    image("images/llava-example.png", width=600)
-
-
-def llava_onevision():
-    text("LLaVA OneVision "), link("https://arxiv.org/pdf/2408.03326")
-    text("- Latest version in the LLaVA series (after LLaVA 1.5, LLaVA-Next)")
-    text("- Handle multiple images, video")
-
-    image("images/llava-onevision.png", width=600)
-    text("- Vision encoder: SigLIP (use grid features before and after last Transformer layer)")
-    text("- Text decoder: Qwen-2 72B")
-    text("- Projector: 2-layer MLP")
-
-    text("Data processing:")
-    text("- Preserving high resolution is important (e.g., for OCR)")
-    text("- CLIP resizes and crops to 336x336, which loses information")
-    text("- Solution: AnyRes, introduced in LLaVA 1.5 "), link(title="paper", url="https://static.hliu.cc/files/llava/improved_llava.pdf")
-    text("- Break up image into a x b pieces (matching resolution of vision encoder), encode, concatenate")
-    text("- If too many tokens (original image is too high resolution), then use bilinear interpolation")
-    image("images/llava-onevision-anyres.png", width=600)
-    text("Handle 3 types of input (single image, multiple images, video):")
-    text("- Goal: make all of the modalities produce roughly the same length")
-    image("images/llava-onevision-modalities.png", width=600)
-    text("- Single image: use higher resolution")
-    text("- Multiple images: use base resolution for each image")
-    text("- Video: use lower resolution for each frame")
-
-    text("Data:")
-    text("- Philosophy: quality over quantity")
-    image("images/llava-onevision-data-1.png", width=700)
-    image("images/llava-onevision-data-2.png", width=700)
-
-    text("Training:")
-    text("- Philosophy: easier to harder")
-    image("images/llava-onevision-training.png", width=700)
-
-    text("Transfer between modalities:")
-    text("- Single image data for diagrams and charts, but generalize to multi-image")
-    image("images/llava-onevision-transfer-s1.png", width=600)
-    text("- OCR on single image data, relational reasoning from multi-image data, generalize to GUI-based agents")
-    image("images/llava-onevision-transfer-s2.png", width=600)
-    text("- Visual prompting (circle) in single images, generalize to videos")
-    image("images/llava-onevision-transfer-s8.png", width=600)
-
-    text("Summary:")
-    text("- Standard VLM template: vision encoder + projector + LM")
-    text("- Most work goes into data curation (heavy on synthesized, task-specific data)")
-    text("- Open-source (released model weights and data)")
-
-
-def qwen_vl():
-    text("Qwen-VL "), link("https://arxiv.org/abs/2308.12966")
-
-    text("Architecture:")
-    text("- Vision encoder: OpenCLIP's ViT-bigC (14x14 patches) "), link("https://arxiv.org/abs/2212.07143")
-    text("- Adaptor: one layer cross-attention, incorporate 2D positional encodings, maps to fixed length of 256")
-    text("- Special tokens: <img>, <box>, <ref>")
-
-    text("Training:")
-    image("images/qwen-vl-stages.png", width=700)
-    text("- Stage 1: large-scale low quality data; freeze LM, train vision encoder + adaptor")
-    image("images/qwen-vl-stage1.png", width=400)
-    text("- Stage 2: higher quality task-specific data, increase resolution; train all parameters")
-    image("images/qwen-vl-stage2.png", width=400)
-    text("- Stage 3: instruction tuning data; freeze visual encoder, train adaptor + LM")
-
-    image("images/qwen-vl-examples.png", width=600)
-
-
-def qwen2_vl():
-    text("Qwen2-VL "), link("https://arxiv.org/abs/2409.12191")
-
-    text("Visual encoder: larger ViT (675M)")
-    image("images/qwen2-vl-architecture.png", width=700)
-    text("- Key: dynamic resolution to handle varying resolutions")
-    text("- Each 224 x 224 patch encoded with ViT/14, compress every 2x2 => 66 tokens")
-    text("- Video: sample 2 frames/sec, max 16384 tokens")
-
-    text("Multimodal Rotary Position Embedding (MRoPE):")
-    image("images/qwen2-vl-mrope.png", width=600)
-    
-    text("Initialize LM with Qwen2 and vision encoder from DFN "), link("https://arxiv.org/abs/2309.17425")
-    text("Training (similar to Qwen-VL):")
-    text("- Stage 1: train only visual encoder")
-    text("- Stage 2: train all parameters")
-    text("- Stage 3: train language model on instruction following datasets")
-
-    text("Many capabilities:")
-    image("images/qwen2-vl-capabilities.png", width=700)
-
-
-def qwen3_vl():
-    text("Qwen3-VL "), link("https://arxiv.org/abs/2511.21631")
-    image("images/qwen3-vl.png", width=700)
-
-    text("Language model:")
-    text("- Qwen-3 models (dense and MoE models up to 235B-A22B)")
-    text("- Long context understanding (256K)")
-
-    text("Vision encoder:")
-    text("- SigLIP-2 (same architecture as SigLIP) "), link("https://arxiv.org/pdf/2502.14786")
-    text("- Interleaved MRoPE: distribute all axes (temporal, width, height) to low- and high-frequency bands")
-    text("- Add explicit video timestamps (as separate tokens rather in positional embeddings)")
-    text("- Square-root-normalized per-token loss: balance text and multimodal data (video examples are long, don't want to dominate)")
-
-    text("Adapter:")
-    text("- DeepStack: cross-layer fusion to inject visual information into multiple layers "), link("https://arxiv.org/abs/2406.04334")
-
-    text("Training:")
-    text("- Pre-training has 4 stages (train adapter, train all parameters on 8K, 32K, 256K lengths)")
-    image("images/qwen3-vl-pretraining.png", width=600)
-    text("- Post-training: SFT on long CoT data, knowledge distillation, RL")
-
-    image("images/qwen3-vl-results.png", width=600)
-
-    text("Summary:")
-    text("- SOTA performance")
-    text("- Lots of data work, but not many details")
-    text("- Minor but potentially important architectural improvements")
-    text("- Scale up")
-
-
-def chameleon():
-    text("Chameleon "), link("https://arxiv.org/pdf/2405.09818")
-
-    text("So far: VLMs encode images (via CLIP or SigLIP), inject into LM")
-    text("Disadvantage: can't generate images (need diffusion)")
-
-    text("Chameleon: map everything into discrete tokens")
-    text("Advantage: can analyze and generate images in a uniform way")
-    image("images/chameleon.png", width=600)
-    image("images/chameleon-example.png", width=600)
-
-    text("Vision encoder "), link("https://arxiv.org/pdf/2203.13131")
-    text("- Key difference: encoder needs to map to discrete tokens (so we can generate them)")
-    text("- VQ-VAE (Vector Quantized Variational Autoencoder) "), link("https://arxiv.org/pdf/1711.00937")
-    text("- Idea: map image to a discrete codebook, decode back to image and minimize reconstruction loss")
-    image("images/vq-vae.png", width=600)
-    text("- Encodes 512 x 512 image into 1024 tokens (codebook of size 8192)")
-    text("- Train a new BPE tokenizer")
-
-    text("Training:")
-    text("- Stage 1 (80%): large-scale, unsupervised (2.9T text tokens, 1.5T text/image tokens, 400B text/image interleaved tokens)")
-    text("- Stage 2 (20%): 50% of stage 1 data, 50% of high quality data")
-    
-    text("Training stability")
-    text("- Text tokens have low entropy, image tokens have high entropy, leads to norm growth, logit drift problem")
-    text("- Fixes: QK norm, z-loss regularization")
-
-    text("Summary:")
-    text("- Elegant (just autoregressive modeling of discrete tokens)")
-    text("- Not as performant (discretization loses information - think OCR)")
-    text("- Training with multiple modalities is tricky")
-```
-
-## 图像编码与预训练 (Image Encoding - CLIP & SigLIP)
-
-```python
-# 图像编码 (Encoding images)
-clip()
-siglip()
-```
-
-**CLIP (Contrastive Language-Image Pretraining)** [https://arxiv.org/abs/2103.00020](https://arxiv.org/abs/2103.00020)
-
-背景：
-- 传统的计算机视觉模型是在带人工标注的图像上训练的。
-- 问题：是否可以利用海量的（图像, 标题）对？
-![](images/clip.png)
-
-方法：
-- 获取一批（图像, 文本）样本（例如 32768 对）
-- 对每张图像和每个文本进行编码
-- 对于每张图像，相比其他文本，更偏好与其对齐的文本
-- 对于每个文本，相比其他图像，更偏好与其对齐的图像
-![](images/clip-code.png)
-
-数据：
-- 搜索了 50 万个查询词，每个查询词获取约 2 万个（图像, 文本）对
-- 在 4 亿个图像-文本对上进行训练
-- 没有开源该数据集
-- 之后在 OpenCLIP 中重现（使用 LAION-5B 数据集，该数据集使用 CLIP 进行过滤） [https://arxiv.org/abs/2212.07143](https://arxiv.org/abs/2212.07143)
-
-数据处理 [[代码]](https://github.com/openai/CLIP/blob/main/clip/clip.py#L79)
-- 图像有各种分辨率（任意 W x H）
-- 使用双三次插值（bicubic interpolation）进行缩放，使较短的边为 336 像素
-- 中心裁剪（裁剪掉边缘以获得 336 x 336 的图像）
-
-图像编码器 (Vision encoder)：
-- 实验了 ResNet-50 和 Vision Transformers [https://arxiv.org/pdf/2010.11929](https://arxiv.org/pdf/2010.11929)
-![](images/vit.png)
-- 注意力池化：使用 query = 全局特征均值进行 QKV 计算
-- 最佳模型：ViT-L/14@336px（L = 大号，14x14 的 patch，3 通道，在 336x336 分辨率的图像上训练）
-
-文本编码器 (Text encoder)：
-- GPT-2 Transformer（63M 参数，12 层）
-- 编码 [BOS] ... [EOS]，返回最高层的 [EOS] 特征向量
-
-主要结果：
-- 在 ImageNet 上，零样本（zero-shot）CLIP 的表现优于在 120 万张 ImageNet 图像上训练的 ResNet-50
-
-消融实验 (Ablation)：
-- 替代方案：直接从图像预测文本
-- 与 CLIP 风格的对比排名相比，计算效率要低得多
-![](images/clip-efficiency.png)
-
-总结：
-- 图像的编码捕获了（噪点）文本给出的语义信息
-- 设计决策是基于图像分类选择的（不是非常细粒度）
-- 技术上：需要大 Batch size，需要在整个 Batch 上进行 softmax 操作
+# 第 17 讲：多模态大模型 (Multimodal Models)
+
+> **核心议题**：从纯文本大语言模型 (Text $\rightarrow$ Text) 演进至跨越文本、图像、音频与视频的统一多模态大模型 (Omni Models)。
+
+- **往期内容**：纯文本语言模型（Token 预测、Transformer 架构、系统优化与后训练对齐）
+- **多模态世界**：真实世界的信息是多模态共存的（文本、高分辨率图像、视频流、连续音频信号、3D 场景等）
+
+<img src="images/multimodality.png" width="600" />
+
+### 终极目标：原生全能模型 (Omni Model)
+- **通用输入理解**：能够接收任意模态的任意组合输入（图像、视频、音频、纯文本）；
+- **通用输出生成**：能够自回归或扩散生成任意模态的任意组合输出。
+
+### 当前技术现状与核心约束
+- **Transformer 的普适性**：基于自注意力机制的 Transformer 架构在各类序列建模中表现极其卓越，是现代多模态模型的核心底座；
+- **Token 化的世界**：Transformer 依赖 Token 序列进行计算（无论是离散离散 Token 还是连续 Embedding Token），每个 Token 代表一段语义信息单元；
+- **核心工程挑战**：文本的分词与 Token 化已非常成熟，但**非文本模态（图像、音频、视频）如何高效、无损且具语义可压缩性地转换为 Token**，是多模态模型最具挑战性的核心课题。
+
+### 本讲两大核心问题：
+1. **多模态输入与理解**：如何高效编码非文本数据（如高分辨率图像、长视频）并注入大语言模型？
+2. **多模态输出与生成**：如何统一建模并自回归生成连续/离散非文本数据（如直接生成图像或音频）？
+
+## 1. 图像特征对齐与视觉编码器 (Vision Encoders)
+
+### 1.1 CLIP (对比式语言-图像预训练, OpenAI 2021)
+[论文链接: CLIP (Radford et al., 2021)](https://arxiv.org/abs/2103.00020)
+
+#### 背景与动机
+- **传统计算机视觉**：依赖 ImageNet 等由人工精细标注的封闭分类类别标签，泛化能力受限且难以拓展至开放词汇；
+- **核心构想**：能否直接利用互联网上自然存在的数亿海量“（图像, 旁注文本）”对进行无监督/弱监督对齐预训练？
+
+<img src="images/clip.png" width="800" />
+
+#### 对比学习方法 (Contrastive Learning)
+- 采样一个超大 Batch 的图像-文本对（例如 $N = 32,768$）；
+- 分别通过**图像编码器 (Vision Encoder)** 与**文本编码器 (Text Encoder)** 提取特征向量并做 $L_2$ 归一化；
+- 构建 $N \times N$ 的余弦相似度矩阵；
+- **双向对齐目标**：
+  1. 对每一幅图像，将其在 Batch 内与真实配对文本的余弦相似度最大化（InfoNCE 损失）；
+  2. 对每一段文本，将其与真实配对图像的余弦相似度最大化；
+  3. 对角线上的 $N$ 个正样本对概率最大化，非对角线上的 $N(N-1)$ 个负样本对概率最小化。
+
+<img src="images/clip-code.png" width="400" />
+
+#### 数据集与数据预处理
+- **WIT-400M 数据集**：从全网抓取 4 亿个（图像, 文本）对（OpenAI 未公开发布，后被社区通过 [LAION-5B (Schuhmann et al., 2022)](https://arxiv.org/abs/2212.07143) 与 OpenCLIP 开源复现）；
+- **图像预处理流程**：
+  1. 真实网页图片分辨率各异（任意长宽比 $W \times H$）；
+  2. 使用双三次插值 (Bicubic Interpolation) 将短边等比缩放至 336 像素；
+  3. 中心裁剪 (Center Crop) 截取中间的 $336 \times 336$ 区域输入编码器。
+
+#### 视觉与文本编码器架构
+- **视觉编码器 (Vision Encoder)**：探索了 ResNet-50 与 [Vision Transformer (ViT, Dosovitskiy et al., 2020)](https://arxiv.org/pdf/2010.11929)；
+  - 最终选用 **ViT-L/14@336px**（Large 规模，将图像切分为 $14 \times 14$ 的 Patch，支持 $336 \times 336$ 输入分辨率）；
+  - 采用 Attention Pooling 替代简单的平均池化（以全局激活均值作为 Query 进行交叉注意力汇聚）。
+- **文本编码器 (Text Encoder)**：63M 参数的 12 层 GPT-2 Transformer 解码器，以最高层的 `[EOS]` Token 特征作为整段文本的全局语义表示。
+
+<img src="images/vit.png" width="600" />
+
+#### 标志性成果与算力效率
+- **零样本分类突破**：在 ImageNet-1K 上，未经任何监督微调的 Zero-Shot CLIP 准确率直接超越了在 120 万标注图片上训练的经典有监督 ResNet-50；
+- **对比学习 vs 生成式预测**：直接通过图像生成文本的自回归模型在计算效率上远逊于基于对比排序的 CLIP 目标，CLIP 在相同算力下学到了更稠密的语义特征！
+
+<img src="images/clip-efficiency.png" width="400" />
+
+#### CLIP 的局限性
+1. 依赖极大的 Batch Size（32K+），跨卡全局 Softmax 通信开销高昂；
+2. 图像被粗暴中心裁剪缩放至 $336 \times 336$，丢失了细粒度高分辨率细节（如小文本 OCR 与小物体检测）；
+3. 仅对齐了全局图像级语义，缺乏空间局部定位能力。
+
+### 1.2 SigLIP (基于 Sigmoid 损失的图像-语言预训练, Google 2023)
+[论文链接: SigLIP (Zhai et al., 2023)](https://arxiv.org/abs/2303.15343)
+
+#### 核心算法革新：Sigmoid 二分类替代全局 Softmax
+- **CLIP 的 Softmax 损失**：将一个 Batch 内的所有负样本作为多分类的分母归一化项，导致**损失函数与 Batch Size 深度绑定**，且多卡分布式训练必须进行高开销的 All-Gather 梯度同步通信；
+- **SigLIP 的 Sigmoid 损失**：将对比学习重构为独立的**二分类交叉熵 (BCE)** 任务：
+  - 对配对的 $(I_i, T_i)$ 正样本对：最大化 $\sigma(z_I \cdot z_T)$；
+  - 对不配对的 $(I_i, T_j)$ 负样本对：最小化 $\sigma(z_I \cdot z_T)$。
+
+<img src="images/siglip-code.png" width="500" />
+
+#### 数据集与惊人的计算效率
+- **WebLI 数据集**：从全网抓取的 10 亿级图文对，利用自动化 OCR 提取图片文字，仅保留前 10% 极高质量对（支持 100 种多语言）；
+- **极致的并行加速**：
+  - CLIP：在 256 块 TPUv3 上训练 10 天；
+  - SigLIP：在仅 32 块 TPUv4 上训练 5 天即可达到甚至超越 CLIP 的性能，显存占用与计算开销大幅下降！
+
+<img src="images/siglip-parallelism.png" width="800" />
+
+#### 批次解耦特性
+- 彻底解耦了 Batch Size 与损失函数计算，在较小 Batch Size（如 16K~32K）下依然能保持极高稳定性，已成为现代视觉语言模型（如 LLaVA OneVision、Qwen3-VL、Gemma-2-VL）事实上的主流视觉编码器底座。
+
+## 2. 视觉语言模型注入范式 (Injecting Visual Tokens into LLMs)
+
+### 2.1 LLaVA (大型语言与视觉助手, 2023)
+[论文链接: LLaVA (Liu et al., 2023)](https://arxiv.org/abs/2304.08485)
+
+#### 核心架构模板
+1. **视觉编码器**：冻结的 CLIP ViT-L/14；
+2. **多模态投影层 (Projector)**：简单的单层线性投影矩阵 $W$（将视觉特征维度映射到大语言模型的词嵌入空间）；
+3. **文本解码器**：Vicuna / LLaMA 底座大语言模型。
+
+<img src="images/llava-architecture.png" width="600" />
+
+#### 基于 GPT-4 的多模态指令合成数据
+- 利用 MS-COCO 图像已有的边界框 (Bounding Box) 与人工标注 Caption；
+- 提示 GPT-4 仅凭结构化文本描述合成出 15.8 万条高质量多轮视觉问答、深度推理与对话数据；
+
+<img src="images/llava-gen.png" width="600" />
+
+#### 两阶段极简训练策略
+- **阶段 1（特征对齐 Pre-training）**：冻结视觉编码器和语言模型，仅训练线性映射层 $W$，使视觉 Token 投影到 LLM 词向量空间；
+- **阶段 2（端到端指令微调 Visual SFT）**：保持视觉编码器冻结，同时微调投影层 $W$ 和大语言模型参数。
+
+<img src="images/llava-example.png" width="600" />
+
+### 2.2 LLaVA OneVision (全能视觉与 AnyRes 动态分辨率, 2024)
+[论文链接: LLaVA-OneVision (Li et al., 2024)](https://arxiv.org/pdf/2408.03326)
+
+#### 核心升级点
+- **编码器与底座**：采用 SigLIP 视觉编码器 + 2 层 MLP 投影层 + Qwen-2 72B 语言模型；
+- **AnyRes 动态高分辨率切片技术**：
+  - 痛点：传统 CLIP 将图片强制缩放至 $336 \times 336$ 会造成图表与 OCR 文本严重模糊；
+  - 方案：根据原图宽高比，将图片动态切分为 $a \times b$ 个网格切片（每个切片独立以原生分辨率送入 SigLIP），同时保留一张全局缩略图，拼接后生成丰富的视觉 Token 序列。
+
+<img src="images/llava-onevision-anyres.png" width="600" />
+
+#### 统一单图、多图与视频输入 (Single Image, Multi-Image, Video)
+- **单图像**：采用 AnyRes 获得高密度高分辨率 Token；
+- **多图对比**：每张图采用基础分辨率切片，控制整体上下文长度；
+- **视频序列**：按固定帧率抽帧，每帧采用低分辨率编码，实现模态长度的动态均衡。
+
+<img src="images/llava-onevision-modalities.png" width="600" />
+
+#### 跨模态知识迁移 (Modality Transfer)
+- 在单图上学习的图表分析能力可平滑泛化到多图对比；
+- 在单图 OCR 与多图关联上训练的模型，能零样本迁移至复杂的操作系统 GUI Agent 交互定位任务中！
+
+<img src="images/llava-onevision-transfer-s1.png" width="600" />
+<img src="images/llava-onevision-transfer-s2.png" width="600" />
+
+### 2.3 Qwen-VL 系列演进 (Qwen-VL $\rightarrow$ Qwen2-VL $\rightarrow$ Qwen3-VL)
+
+#### 1. 初代 Qwen-VL (2023)
+[论文链接: Qwen-VL (Bai et al., 2023)](https://arxiv.org/abs/2308.12966)
+- **视觉编码器**：OpenCLIP ViT-bigC ($14 \times 14$ Patch)；
+- **Cross-Attention 压缩适配器**：引入一层交叉注意力层结合 2D 绝对位置编码，将任意分辨率图片固定压缩为 256 个视觉 Token；
+- **三阶段递进训练**：
+  1. 阶段 1：海量弱标注数据预训练（冻结 LLM，训练视觉编码器与适配器）；
+  2. 阶段 2：高质量多任务多分辨率训练（放开全量参数更新）；
+  3. 阶段 3：多模态对话与指令对齐（冻结视觉编码器，微调适配器与 LLM）。
+
+<img src="images/qwen-vl-stages.png" width="700" />
 
 ---
 
-**SigLIP (Sigmoid Loss for Language Image Pre-Training)** [https://arxiv.org/abs/2303.15343](https://arxiv.org/abs/2303.15343)
+#### 2. Qwen2-VL: 动态原生分辨率与多模态旋转位置编码 (MRoPE, 2024)
+[论文链接: Qwen2-VL (Wang et al., 2024)](https://arxiv.org/abs/2409.12191)
 
-目标：
-- CLIP：对（文本, 图像）与所有其他（文本, 图像'）进行多分类
-- SigLIP：二分类，判断（文本, 图像）是否对齐？
-![](images/siglip-code.png)
+- **原生动态分辨率 (Naive Dynamic Resolution)**：视觉 ViT 直接处理任意长宽比的 Patch 序列，相邻 $2 \times 2$ 的视觉 Token 经 2D 卷积压缩合并为单个 Token，彻底消除几何形变与长宽比失真；
+- **多模态旋转位置编码 (Multimodal RoPE / MRoPE)**：
+  - 核心突破：将传统 1D 文本位置编码分解为三维独立坐标向量：**时间维度 $t$、垂直高度维度 $h$、水平宽度维度 $w$**；
+  - 使得模型能够对长视频时间轴、图像空间拓扑结构与交错文本进行统一的空间几何建模！
 
-数据：
-- WebLI 数据集：十亿级（O(billion)）的（图像, 文本）对 [https://arxiv.org/pdf/2209.06794](https://arxiv.org/pdf/2209.06794)
-- 从互联网抓取
-- 使用自动 OCR 提取图像中的文本
-- 保留质量最高的 10%
-- 支持 100 种语言
-
-效率：
-- CLIP：在 256 个 TPUv3 上运行 10 天
-- SigLIP：在 32 个 TPUv4 上运行 5 动（TPUv4 算力低于 TPUv3）——速度快得多！
-![](images/siglip-parallelism.png)
-
-Batch size：
-- 将 Batch size 与 Loss 计算解耦
-- 在 Batch size < 16K 时表现优于 CLIP
-- 可以上推到 1M Batch size，但 32K 就足够了
-
-## 注入图像编码到 LLM (Injecting Image Encodings into LLMs)
-
-```python
-# 将图像编码注入 LLM (Injecting image encodings into LLMs)
-llava()
-llava_onevision()
-qwen_vl()
-qwen2_vl()
-qwen3_vl()
-```
-
-**LLaVA (Large Language and Vision Assistant)** [https://arxiv.org/abs/2304.08485](https://arxiv.org/abs/2304.08485)
-
-图像编码器：CLIP
-文本解码器：Vicuna（基于 ShareGPT 对话微调的 LLaMA） [https://www.lmsys.org/blog/2023-03-30-vicuna/]
-
-数据：
-- MS COCO 拥有带边界框和 Mechanical Turk 标题的图像标注
-- 使用标题或检测到的对象提示 GPT-4，并生成问题或对话
-- 将生成的多轮对话与原始图像配对
-- 共有 15.8 万个样本
-![](images/llava-gen.png)
-
-模型结构：
-- 使用 CLIP (ViT-L/14) 编码图像
-- 通过线性投影层 (W) 将其映射到嵌入空间（Flamingo 和 Q-former 的结构更为复杂）
-![](images/llava-architecture.png)
-
-训练：
-- 阶段 1（对齐，alignment）：冻结视觉编码器和语言模型，仅训练线性投影层 W
-- 阶段 2（微调，fine-tuning）：冻结视觉编码器，训练 W 层和语言模型本身
-![](images/llava-example.png)
+<img src="images/qwen2-vl-mrope.png" width="600" />
 
 ---
 
-**LLaVA OneVision** [https://arxiv.org/pdf/2408.03326](https://arxiv.org/pdf/2408.03326)
-- LLaVA 系列的最新版本（在 LLaVA 1.5、LLaVA-Next 之后）
-- 可以处理多张图像以及视频输入
+#### 3. Qwen3-VL: 原生全模态与长思维链 (2025/2026)
+[论文链接: Qwen3-VL (Alibaba, 2025)](https://arxiv.org/abs/2511.21631)
 
-![](images/llava-onevision.png)
-- 视觉编码器：SigLIP（使用最后一层 Transformer 层之前和之后的 grid 特征）
-- 文本解码器：Qwen-2 72B
-- 投影器（Projector）：2 层 MLP
+- **底座规模与长上下文**：支持高达 235B-A22B 的 MoE 稀疏架构，原生支持 256K 超长多模态上下文；
+- **视觉编码器与交错 MRoPE (Interleaved MRoPE)**：
+  - 采用 SigLIP-2，将多维位置编码按 $[t, w, h, t, w, h]$ 交错分配至高频与低频旋转带；
+  - 引入显式视频时间戳 Token（Timestamp Tokens）；
+- **跨层特征融合适配器 (DeepStack)**：将视觉编码器不同层级的浅层几何特征与深层语义特征直接跨层注入到大语言模型的多层 Transformer 中；
+- **平方根归一化 Token 损失 (Square-root Normalized Loss)**：平衡视频长 Token 与文本短 Token 的梯度贡献，极大提升预训练数值稳定性；
+- **长思维链视觉强化学习 (Vision CoT & RLVR)**：在复杂图表几何推导与高难度视觉问答上展现出极高的逻辑推理能力。
 
-数据处理：
-- 保留高分辨率非常重要（例如，用于 OCR 任务）
-- CLIP 会将图像缩放并裁剪至 336x336，这会丢失大量信息
-- 解决方案：AnyRes（在 LLaVA 1.5 中引入） [[AnyRes 论文]](https://static.hliu.cc/files/llava/improved_llava.pdf)
-- 将图像拆分为 a x b 个切片（匹配视觉编码器的分辨率），编码后进行拼接
-- 如果 token 数量太多（原始图像分辨率过高），则使用双线性插值进行下采样
-![](images/llava-onevision-anyres.png)
-处理 3 种输入类型（单张图像、多张图像、视频）：
-- 目标：使所有的模态产生大致相同的 token 序列长度
-![](images/llava-onevision-modalities.png)
-- 单张图像：使用高分辨率
-- 多张图像：每个图像使用基础分辨率
-- 视频：每帧使用较低的分辨率
+<img src="images/qwen3-vl.png" width="700" />
+<img src="images/qwen3-vl-results.png" width="600" />
 
-数据：
-- 哲学：质量重于数量
-![](images/llava-onevision-data-1.png)
-![](images/llava-onevision-data-2.png)
+## 3. 原生全离散生成模型 (Towards Omni Models: Chameleon)
+[论文链接: Chameleon (Meta, 2024)](https://arxiv.org/pdf/2405.09818)
 
-训练：
-- 哲学：由易到难
-![](images/llava-onevision-training.png)
+### 离散 Token 化与统一自回归生成
+- **现有 VLM 的固有缺陷**：只能“看”（理解图像），不能“画”（生成图像通常需要外挂独立的 Diffusion 扩散模型，系统割裂）；
+- **Chameleon 的核心哲学**：将文本与图像**全部映射为离散的离散 Token 字典**，在同一个 Transformer 内进行统一的自回归下一个 Token 预测！
 
-模态之间的迁移 (Transfer between modalities)：
-- 针对图表和思维导图的单图数据，可以泛化到多图数据
-![](images/llava-onevision-transfer-s1.png)
-- 单图上的 OCR 数据、多图上的关系推理数据，可以泛化到基于 GUI 的智能体
-![](images/llava-onevision-transfer-s2.png)
-- 单图中的视觉提示（红圈标注），可以泛化到视频
-![](images/llava-onevision-transfer-s8.png)
+<img src="images/chameleon.png" width="600" />
+<img src="images/chameleon-example.png" width="600" />
 
-总结：
-- 标准 VLM 模板：视觉编码器 + 投影器 + 语言模型
-- 绝大部分工作都在于数据策划（重度依赖合成的、针对特定任务的数据）
-- 开源（释放了模型权重和数据集）
+### VQ-VAE 离散图像量化
+- **矢量量化自编码器 (VQ-VAE)**：
+  - 训练一个包含 8192 个码本向量 (Codebook) 的离散量化自编码器；
+  - 将 $512 \times 512$ 分辨率的连续图像压缩编码为 $1024$ 个离散 Token；
+  - 解码器可直接将离散 Token 序列高质量还原为连续 RGB 图像。
+
+<img src="images/vq-vae.png" width="600" />
+
+### 混合模态训练的稳定性挑战
+- **Logit 漂移与范数爆炸 (Logit Drift & Norm Growth)**：
+  - 文本 Token 的信息熵较低，而图像离散 Token 的信息熵极高；
+  - 模态交叉训练极易引发自注意力层的 Query-Key 范数发散与数值溢出；
+- **稳定性解决方案**：引入 **QK-Norm（Query/Key 归一化）** 与 **z-loss 正则化**，保证长序列超大 Batch 训练平稳收敛。
+
+### 总结与未来展望
+- **优雅性**：统一了图像理解与生成的自回归范式；
+- **代价与权衡**：离散化 Token 必然伴随细粒度局部信息的丢失（在精细 OCR 上稍逊于连续嵌入的 VLM）；
+- **行业主流趋势**：连续特征编码器 (SigLIP/ViT) + 大语言模型 (LLM) + 扩散解码头 (Diffusion Head) 构成了目前性能最强悍的工业级 Omni 模型架构。
 
 ---
 
-**Qwen-VL** [https://arxiv.org/abs/2308.12966](https://arxiv.org/abs/2308.12966)
+## 本讲核心总结
 
-架构：
-- 视觉编码器：OpenCLIP 的 ViT-bigC (14x14 patches) [https://arxiv.org/abs/2212.07143](https://arxiv.org/abs/2212.07143)
-- 适配器 (Adaptor)：单层交叉注意力（Cross-attention），合并了 2D 位置编码，将其映射为固定长度的 256
-- 特殊 Token：<img>, <box>, <ref>
-
-训练：
-![](images/qwen-vl-stages.png)
-- 阶段 1：大规模低质量数据；冻结 LM，训练视觉编码器 + 适配器
-![](images/qwen-vl-stage1.png)
-- 阶段 2：高质量特定任务数据，增加分辨率；训练所有参数
-![](images/qwen-vl-stage2.png)
-- 阶段 3：指令微调数据；冻结视觉编码器，训练适配器 + LM
-
-![](images/qwen-vl-examples.png)
-
----
-
-**Qwen2-VL** [https://arxiv.org/abs/2409.12191](https://arxiv.org/abs/2409.12191)
-
-视觉编码器：更大参数的 ViT (675M)
-![](images/qwen2-vl-architecture.png)
-- 关键点：采用动态分辨率以处理不同的长宽比和尺寸
-- 每一个 224 x 224 的 patch 由 ViT/14 编码，每 2x2 合并压缩 => 66 个 token
-- 视频：每秒采样 2 帧，最大 16384 token
-
-多模态旋转位置嵌入 (Multimodal Rotary Position Embedding, MRoPE)：
-![](images/qwen2-vl-mrope.png)
-
-使用 Qwen2 初始化 LM，视觉编码器初始化采用自 DFN [https://arxiv.org/abs/2309.17425]
-训练（类似于 Qwen-VL）：
-- 阶段 1：仅训练视觉编码器
-- 阶段 2：训练所有参数
-- 阶段 3：在指令遵循数据集上训练语言模型
-
-多种能力体现：
-![](images/qwen2-vl-capabilities.png)
-
----
-
-**Qwen3-VL** [https://arxiv.org/abs/2511.21631](https://arxiv.org/abs/2511.21631)
-![](images/qwen3-vl.png)
-
-语言模型：
-- Qwen-3 模型（包括高达 235B-A22B 的稠密和混合专家 MoE 模型）
-- 长文本理解能力 (256K)
-
-视觉编码器：
-- SigLIP-2（与 SigLIP 架构相同） [https://arxiv.org/pdf/2502.14786](https://arxiv.org/pdf/2502.14786)
-- 交错 MRoPE：将所有轴（时间、宽度、高度）分配给低频和高频段
-  ……采用 [t w h t w h t w h t w h] 格式而不是 [t t t t w w w w h h h h]
-- 添加显式视频时间戳（作为独立的 token，而不是合并在位置嵌入中）
-- 平方根归一化的逐 token 损失 (Square-root-normalized per-token loss)：平衡文本与多模态数据（视频数据样本很长，不希望其主导 loss 变化）
-
-适配器 (Adapter)：
-- DeepStack：跨层融合以将视觉信息注入到多个隐藏层中 [https://arxiv.org/abs/2406.04334](https://arxiv.org/abs/2406.04334)
-
-训练：
-- 预训练包含 4 个阶段（先训练适配器，然后在 8K、32K、256K 序列长度上训练所有参数）
-![](images/qwen3-vl-pretraining.png)
-- 后期训练：在长 CoT 数据上进行 SFT、知识蒸馏和强化学习 RL
-![](images/qwen3-vl-results.png)
-
-总结：
-- SOTA 性能
-- 大量数据工程工作，但细节不多
-- 细微但可能非常重要的架构改进
-- 规模扩大 (Scale up)
-
-## 迈向全能 (Towards Omni Models - Chameleon)
-
-```python
-# 迈向全能模型 (Towards Omni models)
-chameleon()
-```
-
-**Chameleon** [https://arxiv.org/pdf/2405.09818](https://arxiv.org/pdf/2405.09818)
-
-到现在为止：VLM 均是编码图像（通过 CLIP 或 SigLIP），然后注入到语言模型 LM 中。
-缺点：无法生成图像（生成图像需要另外配合扩散模型 Diffusion）。
-
-Chameleon：将所有模态映射到统一的离散 Token 中。
-优点：可以用统一的方式分析和生成图像。
-![](images/chameleon.png)
-![](images/chameleon-example.png)
-
-视觉编码器 [https://arxiv.org/pdf/2203.13131](https://arxiv.org/pdf/2203.13131)
-- 关键区别：编码器需要映射到离散的 token（以便我们可以像预测下一个词一样生成它们）
-- VQ-VAE (Vector Quantized Variational Autoencoder, 向量量化变分自编码器) [https://arxiv.org/pdf/1711.00937](https://arxiv.org/pdf/1711.00937)
-- 思想：将图像映射到离散的代码本（codebook）中，重构解码回图像，并最小化重构损失
-![](images/vq-vae.png)
-- 将 512 x 512 的图像编码为 1024 个 token（代码本 codebook 尺寸为 8192）
-- 训练了一个全新的 BPE 分词器
-
-训练：
-- 阶段 1 (80%)：大规模无监督预训练（2.9T 文本 token、1.5T 文本/图像对 token、400B 文本/图像交错 token）
-- 阶段 2 (20%)：50% 的阶段 1 数据，50% 的高质量数据
-
-训练稳定性：
-- 文本 token 具有低熵，图像 token 具有高熵，这会导致激活值范数增长和 logit 漂移问题
-- 修复手段：QK 范数归一化，z-loss 正则化
-
-总结：
-- 极其优雅（完全是离散 token 的自回归建模）
-- 性能没那么强（离散化丢弃了信息——例如无法处理细颗粒度的 OCR 任务）
-- 多模态联合训练在实践中极为棘手
-
----
-
-## 总结 (Summary)
-
-- 前沿大模型均正朝向多模态全能模型演进（原生多模态，原生 Omni）
-- 根本挑战：如何编码非文本模态？
-- 理解和生成可能对特征提取有不同的需求（语义 vs 细粒度细节）
-- 平衡图像+视频（低信息密度）与文本（高信息密度）以维护训练的稳定性
-- 采用连续编码器 + Transformer + 扩散模型（Diffusion）进行生成
+1. **多模态是大模型的必然演进方向**：理解多模态世界与自主规划行动是通往通用人工智能 (AGI) 的必经之路；
+2. **视觉特征对齐两座大山**：CLIP (对比 InfoNCE 损失) 与 SigLIP (解耦 Sigmoid 损失) 奠定了视觉表征的工业基石；
+3. **注入范式与动态分辨率**：LLaVA 确立了“Vision Encoder + Projector + LLM”标准模板，AnyRes 与 MRoPE 彻底解决了高分辨率与时空拓扑建模难题；
+4. **理解与生成的统一**：从 Chameleon 离散自回归到现代流匹配 (Flow Matching) / 扩散生成，原生多模态生成正在迎来全新爆发！
